@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Glossary Review Queue</title>
+  <meta name="description" content="A working prototype: an LLM drafts a website's glossary, a second LLM judges it, code decides which entries a linguist sees, and everything else stays visible and reversible.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234338ca'/%3E%3Cpath d='M9 17l5 5 9-11' stroke='white' stroke-width='3.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/review.css">
+  <link rel="stylesheet" href="css/live.css">
+</head>
+<body>
+  <header id="app-header"></header>
+  <div class="wrap"><div id="banner"></div></div>
+  <nav id="tabs" aria-label="Views"><div class="wrap tabbar" role="tablist"></div></nav>
+  <main class="wrap">
+    <section class="view" id="view-setup" data-view="setup" role="tabpanel" hidden></section>
+    <section class="view" id="view-queue" data-view="queue" role="tabpanel" hidden></section>
+    <section class="view" id="view-auto" data-view="auto" role="tabpanel" hidden></section>
+    <section class="view" id="view-publish" data-view="publish" role="tabpanel" hidden></section>
+    <section class="view" id="view-preview" data-view="preview" role="tabpanel" hidden></section>
+    <section class="view" id="view-learning" data-view="learning" role="tabpanel" hidden></section>
+  </main>
+  <footer>
+    <div class="wrap row">
+      <span id="footer-note">All names and data in the sample run are fictional.</span>
+      <span class="row">
+        <a id="repo-link" href="#" target="_blank" rel="noopener">Source on GitHub</a>
+        <button class="linklike" id="reset-demo" type="button">Reset demo</button>
+      </span>
+    </div>
+  </footer>
+  <div id="toast-root" aria-live="polite"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

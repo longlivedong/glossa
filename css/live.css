@@ -1,0 +1,97 @@
+/* Live-mode views: setup, progress, enforcement preview, what it learned. Uses tokens from app.css. */
+
+.view-pad { padding: 4px 0; }
+.view-pad h2 { font-size: 20px; }
+.view-pad h3 { font-size: 15px; margin-bottom: 8px; }
+.inline-error { color: var(--bad); font-size: 14px; }
+.table-scroll { overflow-x: auto; }
+
+/* Setup */
+.setup-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; flex-wrap: wrap; }
+.setup-form, .setup-run { padding: 20px; }
+.setup-form > * + *, .setup-run > * + * { margin-top: 12px; }
+.setup-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.setup-grid .span-2 { grid-column: span 2; }
+.setup-grid .field > * + * { margin-top: 4px; }
+.setup-actions { gap: 14px; }
+.setup-run-head { justify-content: space-between; }
+.setup-fail { gap: 8px; }
+input[type="file"] { max-width: 100%; font: inherit; font-size: 13px; }
+
+/* Progress */
+.steps { list-style: none; margin: 0; padding: 0; }
+.step { display: flex; gap: 12px; position: relative; padding-bottom: 16px; }
+.step:not(:last-child)::before { content: ""; position: absolute; left: 6px; top: 16px; bottom: 0; width: 2px; background: var(--border); }
+.step-dot { flex: none; width: 14px; height: 14px; margin-top: 4px; border-radius: 50%; border: 2px solid var(--border); background: var(--surface); }
+.step[data-status="running"] .step-dot { border-color: var(--accent); border-top-color: transparent; animation: live-spin 0.9s linear infinite; }
+.step[data-status="done"] .step-dot { background: var(--ok); border-color: var(--ok); }
+.step[data-status="error"] .step-dot { background: var(--bad); border-color: var(--bad); }
+.step-body { flex: 1; min-width: 0; }
+.step-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.step-label { font-weight: 600; }
+.step[data-status="waiting"] .step-label { color: var(--text-3); }
+.step-status { margin-left: auto; font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.step[data-status="done"] .step-status { color: var(--ok); }
+.step[data-status="error"] .step-status { color: var(--bad); }
+.who { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); }
+.who-llm { background: var(--accent-soft); color: var(--accent); }
+.step-bar { margin-top: 6px; max-width: 360px; }
+.step-msg { overflow-wrap: anywhere; }
+.progress-banner { margin-top: 4px; padding: 10px 12px; border-radius: var(--radius-sm); font-size: 14px; overflow-wrap: anywhere; }
+.progress-banner.is-ok { background: var(--ok-bg); color: var(--ok); }
+.progress-banner.is-error { background: var(--bad-bg); color: var(--bad); }
+.progress-foot { margin-top: 8px; font-variant-numeric: tabular-nums; }
+.progress-caption { margin-top: 4px; }
+
+.spinner { display: inline-block; width: 12px; height: 12px; vertical-align: -1px; border-radius: 50%; border: 2px solid var(--accent); border-top-color: transparent; animation: live-spin 0.9s linear infinite; }
+@keyframes live-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .step[data-status="running"] .step-dot, .spinner { animation: none; }
+  .step[data-status="running"] .step-dot { border-top-color: var(--accent); background: var(--accent-soft); }
+  .progress > span { transition: none; }
+}
+
+/* Enforcement preview */
+.pv-head { justify-content: space-between; align-items: flex-start; gap: 12px; }
+.pv-lede { flex: 1 1 320px; max-width: 70ch; }
+.pv-list { display: grid; gap: 12px; }
+.pv-item { padding: 16px; }
+.pv-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.pv-pair p { margin-top: 4px; overflow-wrap: anywhere; }
+.pv-terms { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.pv-terms li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+.pv-term { color: var(--text-2); overflow-wrap: anywhere; }
+.pv-chip { padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pv-used { color: var(--ok); background: var(--ok-bg); }
+.pv-miss { color: var(--bad); background: var(--bad-bg); }
+.pv-skip { color: var(--text-2); background: var(--surface-2); }
+.pv-retry { margin-top: 12px; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--warn-bg); color: var(--warn); font-size: 14px; }
+.pv-retry summary { cursor: pointer; margin-top: 4px; }
+.pv-first { margin-top: 6px; color: var(--text); overflow-wrap: anywhere; }
+
+/* What it learned */
+.lr-head { justify-content: space-between; }
+.sim-tag { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.lr-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.lr-stat, .lr-table { padding: 16px; }
+.lr-big { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.lr-table table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 560px; }
+.lr-table th, .lr-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.lr-table thead th { font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.lr-table tbody th { font-weight: 600; text-transform: capitalize; }
+.lr-table tbody tr:last-child > * { border-bottom: 0; }
+.lr-rate { display: inline-flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
+.lr-bar { width: 64px; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.lr-bar > span { display: block; height: 100%; background: var(--accent); }
+.lr-lower { color: var(--ok); }
+.lr-raise { color: var(--warn); }
+.lr-hold, .lr-floor { color: var(--text-2); }
+.lr-cal { display: flex; gap: 32px; flex-wrap: wrap; margin-bottom: 8px; }
+.lr-loop { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+
+@media (max-width: 640px) {
+  .setup-form, .setup-run { padding: 16px; }
+  .setup-grid, .pv-pair { grid-template-columns: minmax(0, 1fr); }
+  .setup-grid .span-2 { grid-column: auto; }
+  .step-status { margin-left: 0; width: 100%; }
+}
