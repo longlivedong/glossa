@@ -66,13 +66,45 @@ export function tierReasonFor(termType, industry = 'general', forcedTier = null)
  * The judge is a model and tends to be overconfident; code decides how far to trust it (doc §2).
  * A failed check caps the score, and each further failure lowers the cap.
  */
-export const CHECK_CAPS = { importedAgrees: 0.75, siblingAgrees: 0.85, styleFit: 0.7, selfConsistent: 0.7 };
+export const CHECK_CAPS = {
+  importedAgrees: 0.75, siblingAgrees: 0.85, styleFit: 0.7, selfConsistent: 0.7,
+  blindAgrees: 0.7,   // the judge's own term, written before weighing the proposal, differs
+  clearMeaning: 0.6,  // the judge found the source term ambiguous in its context
+};
 
 export function calibrateConfidence(confidence, checks = {}) {
   const failed = Object.keys(CHECK_CAPS).filter((k) => checks[k] === false);
   if (!failed.length) return confidence;
   const cap = Math.min(...failed.map((k) => CHECK_CAPS[k])) - 0.1 * (failed.length - 1);
   return Math.round(Math.max(0, Math.min(confidence, cap)) * 100) / 100;
+}
+
+const ARTICLES = /^(the|a|an|el|la|los|las|un|una|le|les|l'|der|die|das|il|lo|gli|o|os|as)\s+/;
+
+/** Same term for agreement purposes: case, accents, leading articles and punctuation ignored; whole-word containment counts. */
+export function looseTermEqual(a, b) {
+  const n = (s) => normalizeTerm(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/["'«»“”()]/g, '').replace(ARTICLES, '').trim();
+  const x = n(a), y = n(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const within = (short, long) => new RegExp(`(^|\\s)${short.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`).test(long);
+  return x.length < y.length ? within(x, y) : within(y, x);
+}
+
+/** Every draft kept the term exactly as in the source: a name, code or unit that is not translated. */
+export function keptAsSource(c) {
+  const src = normalizeTerm(c.source);
+  const rs = (c.renderings || []).filter(Boolean).map(normalizeTerm);
+  return rs.length >= 2 && rs.every((r) => r === src);
+}
+
+/**
+ * Doc §4: "Low / do not translate: codes, SKUs, brand names kept in the source language".
+ * Safety and legal wording never qualifies, and a tier set by the client's glossary is kept.
+ */
+export function applyDoNotTranslate(c) {
+  if (c.tierForced || c.termType === 'safety' || c.termType === 'legal' || !keptAsSource(c)) return c;
+  return { ...c, tier: 'low', tierReason: 'Every draft kept it exactly as in the source: do not translate.', doNotTranslate: true };
 }
 
 /** Critical and High → hard; Standard → guidance; Low → hard (keep as source). */
@@ -110,6 +142,8 @@ export function seededUnit(str) {
 export function floorFor(c, seed = '') {
   if (c.tier === 'critical') return 'critical';
   if (c.reopened) return 'reopened';
+  // Replacing a term the client already uses is a decision a person makes, whatever the tier.
+  if (importDisagrees(c)) return 'import_disagrees';
   if (c.tier === 'high' && c.confidence < LOW_CONFIDENCE) return 'high_low_conf';
   if (c.tier === 'high' && seededUnit(`hs:${seed}:${c.id}`) < HIGH_SAMPLE_RATE) return 'high_sample';
   if (c.tier === 'low' && c.confidence < LOW_CONFIDENCE) return 'low_low_conf';

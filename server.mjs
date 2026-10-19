@@ -433,7 +433,8 @@ export async function handleLlm(req, res, env) {
     const content = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
     if (typeof content !== 'string') return done(502, { error: 'The LLM returned no message', retryAfter: null });
     const u = (j && j.usage) || {};
-    done(200, { content, model: j.model || cfg.model, usage: { prompt_tokens: u.prompt_tokens || 0, completion_tokens: u.completion_tokens || 0 } });
+    const finish = j.choices[0].finish_reason || null;
+    done(200, { content, finish, model: j.model || cfg.model, usage: { prompt_tokens: u.prompt_tokens || 0, completion_tokens: u.completion_tokens || 0 } });
   } catch {
     if (!res.headersSent) done(500, { error: 'Server error', retryAfter: null });
   }

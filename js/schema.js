@@ -6,7 +6,7 @@
 /** @typedef {'queue'|'random_check'|'auto'} Bucket */
 /** @typedef {'hard'|'guidance'} Enforcement */
 /** @typedef {'all'|'legal_safety'|'marketing'} Scope */
-/** @typedef {'critical'|'reopened'|'high_low_conf'|'high_sample'|'low_low_conf'|null} Floor */
+/** @typedef {'critical'|'reopened'|'import_disagrees'|'high_low_conf'|'high_sample'|'low_low_conf'|null} Floor */
 
 /**
  * @typedef {Object} Decision
@@ -37,9 +37,11 @@
  * @property {string[]} renderings             the 3 drafter phrasings; [0] is the original proposal
  * @property {number} confidence               judge score 0..1 after calibration in code (rules.calibrateConfidence)
  * @property {number} [judgeConfidence]        the judge's raw score before calibration (live runs)
- * @property {{importedAgrees: boolean|null, siblingAgrees: boolean|null, styleFit: boolean, selfConsistent: boolean}} judgeChecks
+ * @property {{importedAgrees: boolean|null, siblingAgrees: boolean|null, styleFit: boolean, selfConsistent: boolean, blindAgrees?: boolean|null, clearMeaning?: boolean}} judgeChecks
  *                                             null = check not applicable (no import / no sibling)
  * @property {string} judgeNote                judge's one-line explanation
+ * @property {string|null} [judgeOwn]          the term the judge would have written itself (live runs)
+ * @property {boolean} [doNotTranslate]        every draft kept it as in the source, so tier was set to Low
  * @property {{text: string, sourceName: string}|null} imported
  * @property {{locale: string, text: string}|null} sibling
  * @property {string[]} context                2–3 sentences from the site containing the term

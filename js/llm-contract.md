@@ -40,7 +40,7 @@ Server picks base URL / key / model for the role from `.env` (judge falls back t
 If the provider rejects `response_format` (HTTP 400 mentioning it), retry once without it.
 Response 200:
 ```json
-{ "content": "<assistant message text>", "model": "...", "usage": { "prompt_tokens": 0, "completion_tokens": 0 } }
+{ "content": "<assistant message text>", "finish": "stop" | "length" | null, "model": "...", "usage": { "prompt_tokens": 0, "completion_tokens": 0 } }
 ```
 Errors: `{ "error": "message", "retryAfter": <seconds|null> }` with the provider's status (429 passes through).
 Never log the key, the Authorization header, or full prompts.

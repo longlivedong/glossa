@@ -129,7 +129,7 @@ test('/api/llm forwards auth and model, normalizes, falls back, passes 429', asy
     await withApp(env, async (base) => {
       let r = await post(base, 'judge');
       assert.equal(r.status, 200);
-      assert.deepEqual(await r.json(), { content: '{"a":1}', model: 'm-real', usage: { prompt_tokens: 3, completion_tokens: 4 } });
+      assert.deepEqual(await r.json(), { content: '{"a":1}', finish: null, model: 'm-real', usage: { prompt_tokens: 3, completion_tokens: 4 } });
       assert.equal(seen[0].url, '/v1/chat/completions');
       assert.equal(seen[0].auth, 'Bearer sk-test-SECRET-123');
       assert.equal(seen[0].body.model, 'judge-m');

@@ -164,7 +164,11 @@ export async function callLLM({ task, role = 'drafter', system, user, maxTokens,
   const gapMs = Number.isFinite(health?.minGapMs) ? health.minGapMs : DEFAULT_GAP_MS;
   const max = maxTokens ?? maxTokensFor(task);
   const messages = [{ role: 'system', content: system }, { role: 'user', content: user }];
-  const first = await requestWithRetry({ role, messages, max_tokens: max, temperature, json: true }, gapMs, task, signal);
+  let first = await requestWithRetry({ role, messages, max_tokens: max, temperature, json: true }, gapMs, task, signal);
+  // "Thinking" models spend part of max_tokens on hidden reasoning; a cut-off answer is asked again with more room.
+  if (first.finish === 'length') {
+    first = await requestWithRetry({ role, messages, max_tokens: max * 3, temperature, json: true }, gapMs, task, signal);
+  }
   try {
     return parseJsonLoose(first.content);
   } catch {

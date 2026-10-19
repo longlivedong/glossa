@@ -2,7 +2,7 @@
 // Not an agent: the model never chooses what happens next.
 import {
   TERM_TYPES, TIERS, ENTRIES_PER_HOUR, tierFor, tierReasonFor, defaultEnforcement, capacityFor,
-  defaultHoursFor, computeLine, calibrateConfidence, normalizeTerm, seededUnit, publishedEntries, checkTerms, hardMisses,
+  defaultHoursFor, computeLine, calibrateConfidence, looseTermEqual, applyDoNotTranslate, normalizeTerm, seededUnit, publishedEntries, checkTerms, hardMisses,
 } from './rules.js';
 import { callLLM, fetchPage, getHealth, getUsage } from './llm.js';
 import {
@@ -19,7 +19,8 @@ const PAGE_CHARS = 5000;
 const LABEL_CHARS = 2500;
 const MAX_CANDIDATES = 300;
 const MAX_CONCEPTS = 150;
-const MAX_TERMS_PER_PAGE = 25;
+const MAX_TERMS_PER_PAGE = 20;
+const BOILERPLATE = /official website|url of this page|here'?s how you know|all rights reserved|^copyright\b|^©|skip to (main )?content|cookie (settings|preferences)/i;
 const CRITICAL_TYPES = new Set(['safety', 'legal', 'regulated']);
 const IMPORT_SOURCE = 'Imported glossary (CSV)';
 const CACHE_PREFIX = 'glossa:cache:';
@@ -252,7 +253,10 @@ function parseExtract(out, payload, page) {
   for (const it of asArray(out?.terms)) {
     const t = str(it?.t).replace(/^["'“”‘’]+|["'“”‘’.,;:!?]+$/g, '').trim();
     if (t.length < 2 || t.length > 80 || wordCount(t) > 8) continue;
+    // site chrome and non-terms the prompt asks the model to skip, caught again in code
+    if (BOILERPLATE.test(t) || /^[\d\s.,:/$€£%+-]+$/.test(t)) continue;
     const key = normalizeTerm(t);
+    if (key === normalizeTerm(page.title) || key === normalizeTerm(payload.title)) continue;
     if (seen.has(key)) continue;
     // drop anything the model invented: the term must occur on the page
     if (!testIn(termRegex([t]), hay)) continue;
@@ -554,7 +558,8 @@ export async function runPipeline(rawInput, { onProgress, llm = callLLM, fetch: 
     // The imported glossary is deliberately not sent: the judge's import check must be independent.
     const a = await batched('draft_a', 'drafter', concepts, (cs) => draftAPrompt({ ...common, concepts: cs.map((c) => conceptPayload(c)) }), 0.2, 'Proposals', tick);
     const b = await batched('draft_b', 'drafter', concepts, (cs) => draftBPrompt({ ...common, concepts: cs.map((c) => conceptPayload(c)) }), 0.7, 'Phrasing B', tick);
-    const c = await batched('draft_c', 'drafter', concepts, (cs) => draftCPrompt({ ...common, concepts: cs.map((c2) => conceptPayload(c2)) }), 0.7, 'Phrasing C', tick);
+    // Phrasing C comes from the judge's model, which never sees A or B: agreement is a blind second opinion.
+    const c = await batched('draft_c', 'judge', concepts, (cs) => draftCPrompt({ ...common, concepts: cs.map((c2) => conceptPayload(c2)) }), 0.7, 'Phrasing C', tick);
     const out = {};
     for (const con of concepts) {
       const id = num(con.id);
@@ -627,7 +632,11 @@ export async function runPipeline(rawInput, { onProgress, llm = callLLM, fetch: 
           siblingAgrees: siblings[c.id] ? bool(j.sa) : null,
           styleFit: bool(j.sf) ?? true,
           selfConsistent: r[0] && r[0] === r[1] && r[1] === r[2] ? true : bool(j.sc) ?? false,
+          // the judge's own term, written before weighing the proposal; compared in code
+          blindAgrees: str(j.o) ? looseTermEqual(j.o, drafts[c.id].proposal.text) : null,
+          clearMeaning: bool(j.amb) === true ? false : true,
         },
+        judgeOwn: clip(str(j.o), 120) || null,
         judgeNote: clip(str(j.n) || (res.has(num(c.id)) ? '' : 'Judge returned no score.'), 140),
       };
     }
@@ -658,6 +667,11 @@ export async function runPipeline(rawInput, { onProgress, llm = callLLM, fetch: 
       status: 'pending',
       decision: null,
     }));
+    // Doc §4: names, codes and units every draft kept as in the source are Low / do not translate.
+    concepts = concepts.map((c) => {
+      const d = applyDoNotTranslate(c);
+      return d === c ? c : { ...d, enforcement: defaultEnforcement(d.tier) };
+    });
     const line = computeLine(concepts, { capacity, seed: runId });
     for (const c of concepts) Object.assign(c, line.assign.get(c.id));
     const health = await getHealth();

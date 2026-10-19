@@ -48,20 +48,28 @@ If a quota or "high demand" error stops a run, press **Retry**. Finished steps a
 
 ## Results from a real run
 
-A test on 5 [MedlinePlus](https://medlineplus.gov/) drug and blood-pressure pages (US National Library of Medicine), English → Spanish (Spain), used a free Gemini key. The old glossary came from MedlinePlus's own Spanish edition, which is written in Latin American Spanish.
+A test on 5 [MedlinePlus](https://medlineplus.gov/) drug and blood-pressure pages (US National Library of Medicine), English → Spanish (Spain), used a free Gemini key. The old glossary came from MedlinePlus's own Spanish edition, which is written in Latin American Spanish. The first run exposed weaknesses; the second column is after fixing them.
 
-| Measure | Result |
-|---|---|
-| Terms found | 120, clustered into 102 concepts |
-| Model calls | 23 (5 extract, 1 cluster, 9 draft, 3 sibling locale, 3 judge, 2 enforcement preview) |
-| Sent to a linguist | 57: all 53 Critical terms plus a 10% sample of High |
-| Auto-approved | 44, plus 1 in the random check |
-| Old glossary | 9 of 18 entries caught as wrong for Spain (*tableta → comprimido*, *ataque al corazón → infarto*, *empaque → envase*); 8 of those went to the linguist |
-| Enforcement preview | 4 of 5 first translations missed a required term; the code check caught each one and the retry fixed it |
+| Measure | First run | After fixes |
+|---|---|---|
+| Candidate terms → concepts | 120 → 102 | 63 → 67 (boilerplate, agency names and page titles filtered out) |
+| Critical share | 52% | 39% (official drug names and dosage warnings) |
+| Brand names (*Aleve, Medrol*) | Critical | Do not translate (Low), auto-approved |
+| Confidence (≥0.9 / 0.6–0.9 / <0.6) | 95 / 7 / 0 | 44 / 21 / 2 |
+| Old-glossary disagreements sent to a linguist | 8 of 9 | 8 of 8 |
+| Sent to a linguist | 57 of 102 | 34 of 67 |
+| Model calls | 23 | 20 |
 
-The run also exposed two problems, both now fixed:
-- **The judge was overconfident**, averaging 0.97. Code now caps its score whenever one of its own checks fails.
-- **The 10% High-tier sample was drawing 24%**, because of a hashing bias. It now draws 10%.
+The old glossary's Latin American terms were replaced with the Spain terms the style guide asks for (*tableta → comprimido*, *ataque al corazón → infarto*, *empaque → envase*), and each replacement goes to a linguist. In the enforcement preview, translations that dropped a required term were caught by the code check and fixed on retry.
+
+**What changed after the first run:**
+- **Second opinion:** phrasing C is drafted by a second model that never sees the drafter's answer.
+- **Confidence:** computed in code from the evidence. The judge's own score stayed near 0.99 even when its checks failed.
+- **Term types:** "regulated" now means official drug names, and "safety" means instruction or warning phrases.
+- **Do not translate:** names every draft keeps unchanged become do-not-translate.
+- **Old glossary:** an entry that disagrees with it is always reviewed.
+
+This content is drug information, so Critical floors still exceed the 8% budget, and the app flags that rather than auto-approving them. A mixed site (see the bookshop test) is the fairer check of the 1-in-12 share. Draft accuracy needs linguist labels to measure.
 
 ![Report tab for the MedlinePlus run](docs/results/medlineplus-report.png)
 
@@ -137,6 +145,6 @@ tests/                node:test suites: rules, demo data, pipeline (mock model),
 npm test
 ```
 
-There are 45 tests, run with Node's built-in test runner. They need no dependencies or network access.
+There are 49 tests, run with Node's built-in test runner. They need no dependencies or network access.
 
 All names and data in the built-in sample run are fictional. MedlinePlus content is in the public domain, courtesy of the US National Library of Medicine.

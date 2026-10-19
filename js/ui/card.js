@@ -142,6 +142,8 @@ export function createCard(el, store, ctx, nav) {
           <ul class="checks">
             ${check('Import agrees', ck.importedAgrees)}${check('Sibling agrees', ck.siblingAgrees)}${check('Style fit', ck.styleFit)}${check('Self-consistent', ck.selfConsistent)}
           </ul>
+          ${c.judgeOwn && ck.blindAgrees === false ? `<p class="card-note">Judge would write: <strong>${esc(c.judgeOwn)}</strong></p>` : ''}
+          ${ck.clearMeaning === false ? `<p class="card-note">Judge: meaning is ambiguous in context</p>` : ''}
           ${c.judgeNote ? `<p class="muted card-note">${esc(c.judgeNote)}</p>` : ''}
         </section>
       </div>

@@ -30,8 +30,11 @@ function styleBlock(styleGuide) {
 
 const data = (obj) => `DATA:\n${JSON.stringify(obj)}`;
 
-const TYPE_LEGEND = 'y is one of: safety (warnings, dosage, contraindications), legal (disclaimers, terms, warranty), '
-  + 'regulated (a term a regulator defines, e.g. "medical device", "CE marked"), brand, product (product or part names), '
+const TYPE_LEGEND = 'y is one of: '
+  + 'safety (an instruction or warning phrase where a wrong rendering could cause harm: dosage, "do not…", contraindications, storage, emergencies; a single object noun such as "syringe" is product or generic, not safety), '
+  + 'legal (disclaimers, terms, warranty, liability, consumer-law wording), '
+  + 'regulated (only names an authority prescribes: official generic drug names such as "naproxen", medical-device classes, legal categories; never a brand or trade name; diseases, symptoms, tests, measurements, diets and drug classes are generic), '
+  + 'brand (trade names and brands, the site\'s or third parties\', e.g. "Aleve", "Medrol"), product (product, model or part names), '
   + 'ui (buttons, menu items, form labels), commerce (price, payment, shipping, returns), category (catalogue sections), '
   + 'marketing (slogans, claims), generic (industry vocabulary not covered above), code (SKUs, model numbers, units).';
 
@@ -55,9 +58,9 @@ export function extractPrompt({ title, labels, sentences }) {
   const system = [
     'You pick glossary terms from one page of a website that will be localised. A glossary term is a word or phrase a translator must render the same way every time.',
     'Include: product and brand names; UI labels (buttons, menu items, form fields); commerce, returns and payment wording; safety, dosage, warning and legal phrases; regulated or technical terms; category names; distinctive marketing phrases; codes, SKUs, model numbers and units.',
-    'Exclude: ordinary words and phrases any translator handles without a glossary ("great", "our team", "learn more"), whole sentences, and people\'s names.',
+    'Exclude: ordinary words and phrases any translator handles without a glossary ("great", "our team", "learn more"); whole sentences; page titles and headings used as titles; names of people, organisations, agencies and publishers (unless it is the site\'s own brand); site boilerplate such as "official website", "URL of this page", copyright and accessibility notices; dates and plain numbers.',
     'Copy each term exactly as written on the page, without surrounding punctuation. Use the shortest form that keeps the meaning ("do not exceed the stated dose", not the whole sentence).',
-    'At most 25 terms. If there are more, keep the ones where a mistranslation would mislead, harm or break the interface.',
+    'At most 20 terms. If there are more, keep the ones where a mistranslation would mislead, harm or break the interface.',
     TYPE_LEGEND,
     's is the index of the sentence in S the term came from, or -1 if it came from a label in L.',
     JSON_ONLY,
@@ -136,9 +139,11 @@ export function judgePrompt({ target, sibling, styleGuide, concepts }) {
     `You review proposed ${T} glossary entries for a website. You did not write them. Be strict: an entry you pass may go live without human review.`,
     `Each concept has: ${fields}`,
     'For each concept return (leave out ia, sa and sc when their input is absent):',
+    `- o: FIRST, before weighing p, the ${T} term you would prescribe from s, y, x and the style guide alone. Do not copy p unless it is what you would have written.`,
+    '- amb: true if s could mean different things in its context, or the right term depends on information the context does not give.',
     '- ia, only if m is present: true if p and m are the same term (ignore case, accents and articles); false if the wording differs.',
     ...(sibling ? ['- sa, only if sb is present: true if sb expresses the same concept as p (a legitimate regional variant, e.g. "ordenador"/"computadora", counts as agreement); false if it points to a different meaning.'] : []),
-    `- sf: true if p follows the style guide and the ${T} register, and keeps codes, units and brand names as in the source.`,
+    `- sf: false if p breaks any rule of the style guide or the ${T} register, or alters a code, unit or brand name; true only if you checked and found nothing.`,
     '- sc, only if b or c is present: true if p, b and c are the same term up to case, articles or inflection.',
     '- k: confidence 0 to 1 that p is the right entry:',
     '  0.9-1.0 every check passes and the meaning in context is clear;',
@@ -147,7 +152,7 @@ export function judgePrompt({ target, sibling, styleGuide, concepts }) {
     '- n: the main concern, or "ok", at most 12 words.',
     `${registerRule(target)}`,
     `${JSON_ONLY} one item per input concept, same i:`,
-    `{"items":[{"i":1,"sf":true,"k":0.92,"n":"ok"},{"i":2,"ia":false,${sibling ? '"sa":true,' : ''}"sf":true,"sc":true,"k":0.5,"n":"…"}]}`,
+    `{"items":[{"i":1,"o":"…","amb":false,"sf":true,"k":0.92,"n":"ok"},{"i":2,"o":"…","amb":true,"ia":false,${sibling ? '"sa":true,' : ''}"sf":true,"sc":true,"k":0.5,"n":"…"}]}`,
   ].join('\n');
   return { system, user: `${styleBlock(styleGuide)}${data({ c: concepts })}` };
 }
@@ -178,7 +183,7 @@ export function translateStrictPrompt({ target, items }) {
 }
 
 // As small as is safe; truncated JSON costs a repair call, so leave some headroom.
-const PER_ITEM = { draft_a: 45, draft_b: 22, draft_c: 34, sibling: 22, judge: 60, translate: 110, translate_strict: 110 };
+const PER_ITEM = { draft_a: 45, draft_b: 22, draft_c: 34, sibling: 22, judge: 80, translate: 110, translate_strict: 110 };
 export function maxTokensFor(task, n = 1) {
   if (task === 'extract') return 700; // 25 terms × ~14 tokens, with headroom
   if (task === 'cluster') return Math.min(3000, 300 + 8 * n);

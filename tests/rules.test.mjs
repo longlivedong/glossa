@@ -210,3 +210,37 @@ test('seeded sample is roughly uniform over sequential ids', async () => {
     assert.ok(n > 65 && n < 135, `decile ${d}: ${n}`);
   }
 });
+
+test('loose term equality for agreement checks', async () => {
+  const { looseTermEqual } = await import('../js/rules.js');
+  assert.equal(looseTermEqual('el comprimido masticable', 'Comprimido masticable'), true);
+  assert.equal(looseTermEqual('médico', 'medico'), true);
+  assert.equal(looseTermEqual('de liberación prolongada', 'comprimido de liberación prolongada'), true);
+  assert.equal(looseTermEqual('brazalete', 'manguito'), false);
+  assert.equal(looseTermEqual('', 'x'), false);
+});
+
+test('do-not-translate: kept as source by every draft becomes Low, safety never', async () => {
+  const { applyDoNotTranslate } = await import('../js/rules.js');
+  const brand = makeConcept({ source: 'Aleve', termType: 'brand', renderings: ['Aleve', 'Aleve', 'aleve'] });
+  assert.equal(applyDoNotTranslate(brand).tier, 'low');
+  const inn = makeConcept({ source: 'naproxen', termType: 'regulated', renderings: ['naproxeno', 'naproxeno', 'naproxeno'] });
+  assert.equal(applyDoNotTranslate(inn).tier, 'critical');
+  const safety = makeConcept({ source: 'STOP', termType: 'safety', renderings: ['STOP', 'STOP', 'STOP'] });
+  assert.equal(applyDoNotTranslate(safety).tier, 'critical');
+  const forced = { ...makeConcept({ source: 'Veloma', termType: 'brand', tier: 'critical', renderings: ['Veloma', 'Veloma', 'Veloma'] }), tierForced: true };
+  assert.equal(applyDoNotTranslate(forced).tier, 'critical');
+});
+
+test('calibration caps for blind disagreement and unclear meaning', async () => {
+  const { calibrateConfidence } = await import('../js/rules.js');
+  assert.equal(calibrateConfidence(0.95, { blindAgrees: false }), 0.7);
+  assert.equal(calibrateConfidence(0.95, { clearMeaning: false }), 0.6);
+  assert.equal(calibrateConfidence(0.95, { blindAgrees: true, clearMeaning: true }), 0.95);
+});
+
+test('an old-glossary disagreement is always reviewed', () => {
+  const c = makeConcept({ termType: 'category', confidence: 0.95, imported: { text: 'tableta masticable', sourceName: 'x' }, proposal: { text: 'comprimido masticable', reason: '' } });
+  assert.equal(floorFor(c), 'import_disagrees');
+  assert.equal(floorFor({ ...c, imported: { text: 'Comprimido masticable', sourceName: 'x' } }), null);
+});
