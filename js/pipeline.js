@@ -2,7 +2,7 @@
 // Not an agent: the model never chooses what happens next.
 import {
   TERM_TYPES, TIERS, ENTRIES_PER_HOUR, tierFor, tierReasonFor, defaultEnforcement, capacityFor,
-  defaultHoursFor, computeLine, normalizeTerm, seededUnit, publishedEntries, checkTerms, hardMisses,
+  defaultHoursFor, computeLine, calibrateConfidence, normalizeTerm, seededUnit, publishedEntries, checkTerms, hardMisses,
 } from './rules.js';
 import { callLLM, fetchPage, getHealth, getUsage } from './llm.js';
 import {
@@ -22,7 +22,7 @@ const MAX_CONCEPTS = 150;
 const MAX_TERMS_PER_PAGE = 25;
 const CRITICAL_TYPES = new Set(['safety', 'legal', 'regulated']);
 const IMPORT_SOURCE = 'Imported glossary (CSV)';
-const CACHE_PREFIX = 'glossary-review:cache:';
+const CACHE_PREFIX = 'glossa:cache:';
 
 // ---------- small helpers ----------
 
@@ -90,6 +90,7 @@ export function clearPipelineCache(input) {
 function normInput(input) {
   return {
     url: input.url, maxPages: Math.min(10, Math.max(1, input.maxPages ?? 10)),
+    urls: (Array.isArray(input.urls) ? input.urls : String(input.urls || '').split(/\s+/)).map((u) => u.trim()).filter(Boolean),
     importedCsvText: input.importedCsvText || '', styleGuide: input.styleGuide || '',
     target: input.target || 'es-ES', sibling: input.sibling === undefined ? 'es-MX' : input.sibling,
     industry: input.industry || 'general', hours: input.hours ?? null, siteName: input.siteName || '',
@@ -160,7 +161,12 @@ async function crawl(input, fetchFn, emit, signal) {
   const origin = new URL(start).origin;
   const max = input.maxPages;
   // Frontier entries remember how often and how early they were linked: nav links repeat on every page and come first.
-  const frontier = new Map([[start, { url: start, inbound: 1, firstIdx: 0 }]]);
+  const frontier = new Map([[start, { url: start, inbound: 1, firstIdx: 0, seed: 0 }]]);
+  // Pages the user listed come right after the start page, in their order, before anything discovered by links.
+  input.urls.forEach((raw, i) => {
+    const u = normalizeUrl(raw, start);
+    if (u && new URL(u).origin === origin && !frontier.has(u)) frontier.set(u, { url: u, inbound: 1, firstIdx: 0, seed: i + 1 });
+  });
   const visited = new Set();
   const pages = [];
   let order = 0;
@@ -168,6 +174,7 @@ async function crawl(input, fetchFn, emit, signal) {
   while (frontier.size && pages.length < max) {
     signal?.throwIfAborted?.();
     const next = [...frontier.values()].sort((a, b) =>
+      (a.seed ?? Infinity) - (b.seed ?? Infinity) ||
       segments(a.url) - segments(b.url) || b.inbound - a.inbound || a.firstIdx - b.firstIdx)[0];
     frontier.delete(next.url);
     visited.add(next.url);
@@ -449,14 +456,27 @@ export async function runPipeline(rawInput, { onProgress, llm = callLLM, fetch: 
     return results;
   };
 
+  // Per-step timing and token use for the run report, measured from the shared usage counter.
+  const t0 = Date.now();
+  const stats = { durationMs: 0, candidates: 0, steps: {} };
   const runStep = async (name, fn) => {
     step = name;
+    const start = Date.now();
+    const before = getUsage();
     try {
       return await fn();
     } catch (e) {
       const aborted = signal?.aborted;
       emit('error', 0, 0, aborted ? 'Cancelled.' : e.message);
       throw e;
+    } finally {
+      const after = getUsage();
+      stats.steps[name] = {
+        ms: Date.now() - start,
+        calls: after.calls - before.calls,
+        promptTokens: after.promptTokens - before.promptTokens,
+        completionTokens: after.completionTokens - before.completionTokens,
+      };
     }
   };
 
@@ -492,6 +512,7 @@ export async function runPipeline(rawInput, { onProgress, llm = callLLM, fetch: 
     return all;
   });
 
+  stats.candidates = Math.min(MAX_CANDIDATES, new Set(extracted.flat().map((t) => normalizeTerm(t.t))).size);
   const csvRows = input.importedCsvText ? parseGlossaryCsv(input.importedCsvText) : [];
 
   // 3. cluster: the model groups variants; code counts, finds context and matches the import
@@ -616,7 +637,7 @@ export async function runPipeline(rawInput, { onProgress, llm = callLLM, fetch: 
   });
 
   // 8. draw the line, in code
-  return runStep('line', async () => {
+  const finished = await runStep('line', async () => {
     emit('start', 0, 1, 'Drawing the review line.');
     const hours = input.hours ?? defaultHoursFor(concepts.length);
     const capacity = capacityFor(hours);
@@ -626,6 +647,8 @@ export async function runPipeline(rawInput, { onProgress, llm = callLLM, fetch: 
       proposal: drafts[c.id].proposal,
       renderings: drafts[c.id].renderings,
       ...judged[c.id],
+      judgeConfidence: judged[c.id].confidence,
+      confidence: calibrateConfidence(judged[c.id].confidence, judged[c.id].judgeChecks),
       sibling: siblings[c.id] || null,
       enforcement: defaultEnforcement(c.tier),
       scope: 'all',
@@ -655,6 +678,7 @@ export async function runPipeline(rawInput, { onProgress, llm = callLLM, fetch: 
       styleGuide: input.styleGuide,
       models: { drafter: model('drafter'), judge: model('judge') },
       usage: getUsage(),
+      stats,
       concepts,
       preview: null,
     };
@@ -662,6 +686,8 @@ export async function runPipeline(rawInput, { onProgress, llm = callLLM, fetch: 
     emit('done', 1, 1, `${q} of ${concepts.length} need a linguist; the rest are auto-approved.`);
     return run;
   });
+  stats.durationMs = Date.now() - t0;
+  return finished;
 }
 
 // ---------- step 8 preview ----------

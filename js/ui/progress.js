@@ -1,14 +1,14 @@
-// Pipeline progress: a vertical step list showing which steps are code and which are model calls.
+// Run progress: a vertical list of steps with their status.
 import { esc, fmtInt } from './dom.js';
 
 const STEPS = [
-  { id: 'crawl', label: 'Crawl pages', who: 'Code', kind: 'code' },
-  { id: 'extract', label: 'Extract terms', who: 'LLM: Drafter', kind: 'llm' },
-  { id: 'cluster', label: 'Cluster variants', who: 'LLM: Drafter', kind: 'llm' },
-  { id: 'draft', label: 'Draft renderings ×3', who: 'LLM: Drafter', kind: 'llm' },
-  { id: 'sibling', label: 'Draft sibling locale', who: 'LLM: Drafter', kind: 'llm' },
-  { id: 'judge', label: 'Judge confidence', who: 'LLM: Judge', kind: 'llm' },
-  { id: 'line', label: 'Draw the line', who: 'Code', kind: 'code' },
+  { id: 'crawl', label: 'Read the pages' },
+  { id: 'extract', label: 'Find terms' },
+  { id: 'cluster', label: 'Group variants' },
+  { id: 'draft', label: 'Draft translations' },
+  { id: 'sibling', label: 'Draft the sibling locale' },
+  { id: 'judge', label: 'Score confidence' },
+  { id: 'line', label: 'Choose what you review' },
 ];
 
 const STATUS_TEXT = { waiting: 'Waiting', running: 'Running', done: 'Done ✓', error: 'Error ✗' };
@@ -27,7 +27,6 @@ export function createProgress(el) {
           <div class="step-body">
             <div class="step-head">
               <span class="step-label">${esc(s.label)}</span>
-              <span class="who who-${s.kind}">${esc(s.who)}</span>
               <span class="step-status"></span>
             </div>
             <div class="step-bar" hidden><div class="progress"><span></span></div></div>
@@ -36,8 +35,7 @@ export function createProgress(el) {
         </li>`).join('')}
     </ol>
     <div class="progress-banner" role="status" aria-live="polite" hidden></div>
-    <div class="progress-foot subtle" aria-live="off"></div>
-    <p class="subtle progress-caption">A fixed pipeline: each model call does one job; code decides who sees what.</p>`;
+    <div class="progress-foot subtle" aria-live="off"></div>`;
 
   const paintStep = (id) => {
     const s = state[id];

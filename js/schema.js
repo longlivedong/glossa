@@ -35,7 +35,8 @@
  * @property {string[]} pages                  URLs (or paths) where the term was seen
  * @property {{text: string, reason: string}} proposal   drafter's rendering (updated by an edit)
  * @property {string[]} renderings             the 3 drafter phrasings; [0] is the original proposal
- * @property {number} confidence               judge score 0..1
+ * @property {number} confidence               judge score 0..1 after calibration in code (rules.calibrateConfidence)
+ * @property {number} [judgeConfidence]        the judge's raw score before calibration (live runs)
  * @property {{importedAgrees: boolean|null, siblingAgrees: boolean|null, styleFit: boolean, selfConsistent: boolean}} judgeChecks
  *                                             null = check not applicable (no import / no sibling)
  * @property {string} judgeNote                judge's one-line explanation
@@ -70,6 +71,21 @@
  */
 
 /**
+ * @typedef {Object} StepStats
+ * @property {number} ms
+ * @property {number} calls
+ * @property {number} promptTokens
+ * @property {number} completionTokens
+ */
+
+/**
+ * @typedef {Object} RunStats
+ * @property {number} durationMs        crawl start to line drawn
+ * @property {number} candidates        unique candidate terms sent to clustering
+ * @property {Partial<Record<'crawl'|'extract'|'cluster'|'draft'|'sibling'|'judge'|'line', StepStats>>} steps
+ */
+
+/**
  * @typedef {Object} Run
  * @property {string} id
  * @property {'demo'|'live'} mode
@@ -82,6 +98,7 @@
  * @property {string} styleGuide
  * @property {{drafter: string, judge: string}|null} models   model names used (live)
  * @property {{calls: number, promptTokens: number, completionTokens: number}|null} usage
+ * @property {RunStats} [stats]        live only: timing and token use per step, for the run report
  * @property {Concept[]} concepts
  * @property {PreviewItem[]|null} preview
  */

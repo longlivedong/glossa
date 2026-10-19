@@ -1,6 +1,6 @@
 // The review queue: filterable list on the left, the review card on the right.
 import { TIERS, TIER_LABEL, sortQueue, hint } from '../rules.js';
-import { esc, tierBadge, confBar, statusBadge, fmtInt } from './dom.js';
+import { esc, tierBadge, statusBadge, fmtInt } from './dom.js';
 import { createCard } from './card.js';
 
 const WHY = 'Critical terms always come first, lowest confidence first. Everything else is ranked by tier weight × (1 − judge confidence) × log(1 + frequency on the site). You work down the list until the hours run out; below the line entries are auto-approved, stay visible, and 1% are sampled for a random check.';
@@ -42,7 +42,7 @@ export function mount(el, store, ctx) {
   const row = (c, sel) => `
     <li><button type="button" class="q-row" data-id="${esc(c.id)}" data-fk="row-${esc(c.id)}"${sel === c.id ? ' aria-current="true"' : ''}>
       <span class="q-row-top"><span class="q-term">${esc(c.source)}</span>${statusBadge(c.status) ? `<span class="q-status">${statusBadge(c.status)}</span>` : ''}</span>
-      <span class="q-row-meta">${tierBadge(c.tier)}${confBar(c.confidence)}<span class="q-freq" title="Occurrences on the site">×${fmtInt(c.frequency)}</span>${(() => { const h = hint(c); return `<span class="hint-chip hint-${esc(h.key)}">${esc(h.label)}</span>`; })()}</span>
+      <span class="q-row-meta">${tierBadge(c.tier)}${(() => { const h = hint(c); return h.key === 'critical' ? '' : `<span class="hint-chip hint-${esc(h.key)}">${esc(h.label)}</span>`; })()}</span>
     </button></li>`;
 
   function render() {

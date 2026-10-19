@@ -192,3 +192,21 @@ test('header: live auto count includes the random check, so auto + need you = to
   assert.equal(h.auto + h.needYou, h.total);
   assert.equal(h.randomCheck, 1);
 });
+
+test('confidence calibration: failed checks cap the judge score', async () => {
+  const { calibrateConfidence } = await import('../js/rules.js');
+  assert.equal(calibrateConfidence(0.97, { importedAgrees: true, siblingAgrees: true, styleFit: true, selfConsistent: true }), 0.97);
+  assert.equal(calibrateConfidence(0.95, { importedAgrees: false, siblingAgrees: true, styleFit: true, selfConsistent: true }), 0.75);
+  assert.equal(calibrateConfidence(0.95, { importedAgrees: false, selfConsistent: false }), 0.6);
+  assert.equal(calibrateConfidence(0.5, { siblingAgrees: false }), 0.5);
+  assert.equal(calibrateConfidence(0.9, { importedAgrees: null, siblingAgrees: null, styleFit: true, selfConsistent: true }), 0.9);
+});
+
+test('seeded sample is roughly uniform over sequential ids', async () => {
+  const { seededUnit } = await import('../js/rules.js');
+  const xs = Array.from({ length: 1000 }, (_, i) => seededUnit(`hs:run_x:c_${String(i + 1).padStart(4, '0')}`));
+  for (let d = 0; d < 10; d++) {
+    const n = xs.filter((x) => x >= d / 10 && x < (d + 1) / 10).length;
+    assert.ok(n > 65 && n < 135, `decile ${d}: ${n}`);
+  }
+});

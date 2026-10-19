@@ -1,0 +1,5 @@
+Locale: Spanish (Spain), online bookshop.
+- Address shoppers as "tú" in marketing and buttons; keep legal notices impersonal.
+- Use Spain commerce terms: "cesta" (not "carrito"), "IVA" for tax, "disponible" / "en stock" for availability.
+- Buttons and labels in sentence case, short (max 3 words where possible).
+- Keep book titles, author names, UPC codes and prices exactly as in the source.

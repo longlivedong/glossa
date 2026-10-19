@@ -8,8 +8,8 @@ The API key lives in `.env` on the server and never reaches the browser.
 ### `GET /api/health`
 ```json
 { "live": true, "mock": false,
-  "drafter": { "host": "generativelanguage.googleapis.com", "model": "gemini-2.0-flash" },
-  "judge":   { "host": "generativelanguage.googleapis.com", "model": "gemini-2.0-flash" },
+  "drafter": { "host": "generativelanguage.googleapis.com", "model": "gemini-3.8-flash" },
+  "judge":   { "host": "generativelanguage.googleapis.com", "model": "gemini-3.8-flash" },
   "minGapMs": 4000 }
 ```
 - `minGapMs` (from `LLM_MIN_GAP_MS`, default 4000): minimum gap between LLM requests, for free-tier rate limits.
@@ -65,7 +65,7 @@ export async function runPipeline(input, { onProgress, llm = callLLM, fetch = fe
 // onProgress({ step, status, done, total, message, usage })
 //   step: 'crawl' | 'extract' | 'cluster' | 'draft' | 'sibling' | 'judge' | 'line'
 //   status: 'start' | 'progress' | 'done' | 'error'
-// Caches each finished step in localStorage ('glossary-review:cache:<hash of input>') so a retry resumes.
+// Caches each finished step in localStorage ('glossa:cache:<hash of input>') so a retry resumes.
 
 export async function runPreview(run, { onProgress, llm = callLLM, max = 5 } = {})
 // Step 8. Picks up to `max` crawled context sentences that contain published glossary terms

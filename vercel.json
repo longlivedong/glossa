@@ -1,0 +1,9 @@
+{
+  "functions": {
+    "api/llm.js": { "maxDuration": 60 },
+    "api/fetch.js": { "maxDuration": 30 }
+  },
+  "headers": [
+    { "source": "/api/(.*)", "headers": [{ "key": "Cache-Control", "value": "no-store" }] }
+  ]
+}

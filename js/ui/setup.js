@@ -5,12 +5,39 @@ import { INDUSTRIES } from '../rules.js';
 import { LOCALE_LABEL } from '../schema.js';
 
 const DEFAULTS = {
-  url: '', siteName: '', target: 'es-ES', sibling: 'es-MX', industry: 'general', maxPages: 10,
+  url: '', urls: '', siteName: '', target: 'es-ES', sibling: 'es-MX', industry: 'general', maxPages: 10,
   csvText: '', csvName: '', styleGuide: '', hours: '',
 };
 
+// Ready-made tests from samples/TEST-KIT.md, so a reviewer can run one without looking anything up.
+const EXAMPLES = {
+  health: {
+    label: 'Health information (MedlinePlus)',
+    dir: 'samples/test-a-medlineplus',
+    values: {
+      url: 'https://medlineplus.gov/druginfo/meds/a682878.html',
+      urls: ['https://medlineplus.gov/druginfo/meds/a682159.html', 'https://medlineplus.gov/druginfo/meds/a681004.html',
+        'https://medlineplus.gov/highbloodpressure.html', 'https://medlineplus.gov/ency/article/007490.htm'].join('\n'),
+      siteName: 'MedlinePlus (NIH): drug information', maxPages: 5, target: 'es-ES', sibling: 'es-MX', industry: 'healthcare', hours: '',
+    },
+  },
+  shop: {
+    label: 'Online shop (Books to Scrape)',
+    dir: 'samples/test-b-bookshop',
+    values: {
+      url: 'https://books.toscrape.com/',
+      urls: ['https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html',
+        'https://books.toscrape.com/catalogue/sapiens-a-brief-history-of-humankind_996/index.html',
+        'https://books.toscrape.com/catalogue/category/books/travel_2/index.html'].join('\n'),
+      siteName: 'Books to Scrape (sandbox shop)', maxPages: 5, target: 'es-ES', sibling: 'es-MX', industry: 'retail', hours: '',
+    },
+  },
+};
+
 export function mount(el, store, ctx) {
-  const values = { ...DEFAULTS };
+  // A hosted deployment may cap pages per run (MAX_PAGES) to protect the owner's quota.
+  const maxPages = Math.min(10, ctx.health?.maxPages || 10);
+  const values = { ...DEFAULTS, maxPages };
   let phase = 'form'; // 'form' | 'running' | 'error'
   let csvCount = null;
   let csvError = '';
@@ -44,7 +71,7 @@ export function mount(el, store, ctx) {
     if (!h) return '';
     const d = h.drafter ? `${esc(h.drafter.model)} (${esc(h.drafter.host)})` : 'unknown';
     const j = h.judge ? esc(h.judge.model) : 'unknown';
-    return `<p class="subtle">Drafter: ${d} · Judge: ${j}</p>${h.mock ? '<p class="subtle"><strong>Mock mode:</strong> canned answers, no API calls</p>' : ''}`;
+    return `<p class="subtle">Models: ${d} · ${j}</p>${h.mock ? '<p class="subtle"><strong>Mock mode:</strong> canned answers, no API calls</p>' : ''}`;
   };
 
   const renderForm = () => {
@@ -52,15 +79,19 @@ export function mount(el, store, ctx) {
     bodyEl.innerHTML = `
       <form class="panel setup-form" novalidate>
         <h2>Run on a website</h2>
-        <p class="muted">Paste a website. The Drafter extracts and drafts terms, the Judge scores them, code draws the line, and you review only what's above it.</p>
+        <p class="muted">Paste a website. Glossa drafts its glossary and you review only the entries that need a person.</p>
         ${modelLine()}
+        <p class="setup-examples">Try an example: ${Object.entries(EXAMPLES).map(([k, x]) => `<button type="button" class="linklike" data-example="${k}">${esc(x.label)}</button>`).join(' · ')}</p>
         <div class="setup-grid">
           <div class="field span-2"><label for="su-url">Website URL</label>
             <input id="su-url" name="url" type="url" required placeholder="https://example.com" value="${esc(v.url)}" autocomplete="off"></div>
+          <div class="field span-2"><label for="su-urls">Specific pages <span class="subtle">(optional, one URL per line)</span></label>
+            <textarea id="su-urls" name="urls" rows="2" placeholder="https://example.com/products/blood-pressure-monitor">${esc(v.urls)}</textarea>
+            <div class="subtle">crawled first, then the crawler follows links from the start page; same site only</div></div>
           <div class="field"><label for="su-name">Site name <span class="subtle">(optional)</span></label>
             <input id="su-name" name="siteName" type="text" value="${esc(v.siteName)}"></div>
           <div class="field"><label for="su-pages">Max pages</label>
-            <input id="su-pages" name="maxPages" type="number" min="1" max="10" value="${esc(v.maxPages)}"></div>
+            <input id="su-pages" name="maxPages" type="number" min="1" max="${maxPages}" value="${esc(v.maxPages)}"></div>
           <div class="field"><label for="su-target">Target locale</label>
             <select id="su-target" name="target">${opt(LOCALE_LABEL, v.target, 'en')}</select></div>
           <div class="field"><label for="su-sib">Sibling locale</label>
@@ -84,7 +115,7 @@ export function mount(el, store, ctx) {
         <p class="inline-error" data-formerr role="alert" hidden></p>
         <div class="row setup-actions">
           <button type="submit" class="btn btn-primary">Run pipeline</button>
-          <span class="subtle">About 20–25 model calls for 10 pages; 2–3 minutes on a free tier.</span>
+          <span class="subtle">About 20–25 model calls; around 5 minutes at free-tier rate limits.</span>
         </div>
       </form>`;
   };
@@ -109,8 +140,9 @@ export function mount(el, store, ctx) {
     const hours = Number(values.hours);
     return {
       url: values.url.trim(),
+      urls: values.urls.split(/\s+/).filter(Boolean),
       siteName: values.siteName.trim(),
-      maxPages: Math.min(10, Math.max(1, Number(values.maxPages) || 10)),
+      maxPages: Math.min(maxPages, Math.max(1, Number(values.maxPages) || maxPages)),
       importedCsvText: values.csvText,
       styleGuide: values.styleGuide.trim(),
       target: values.target,
@@ -195,7 +227,17 @@ export function mount(el, store, ctx) {
     }
     start(buildInput());
   });
-  bodyEl.addEventListener('click', (e) => {
+  bodyEl.addEventListener('click', async (e) => {
+    const ex = e.target.closest('[data-example]');
+    if (ex) {
+      const x = EXAMPLES[ex.dataset.example];
+      const get = (f) => fetch(`${x.dir}/${f}`).then((r) => (r.ok ? r.text() : ''), () => '');
+      const [csv, style] = await Promise.all([get('old-glossary.csv'), get('style-guide.txt')]);
+      Object.assign(values, x.values, { maxPages: Math.min(maxPages, x.values.maxPages), csvText: csv, csvName: 'old-glossary.csv', styleGuide: style.trim() });
+      renderForm();
+      parseCsv();
+      return;
+    }
     if (e.target.closest('[data-cancel]')) ctrl?.abort();
     else if (e.target.closest('[data-retry]')) start(lastInput);
     else if (e.target.closest('[data-back]')) showForm();
@@ -212,6 +254,13 @@ export function mount(el, store, ctx) {
     renderSummary();
   };
   store.subscribe(() => { if (phase === 'form') sync(); });
+  // The brand bar's "New run" button opens the form directly, even when a live run is loaded.
+  window.addEventListener('glossa:new-run', () => {
+    if (phase !== 'form') return;
+    forceForm = true;
+    sync();
+    requestAnimationFrame(() => bodyEl.querySelector('#su-url')?.focus());
+  });
   renderForm();
   sync();
 }

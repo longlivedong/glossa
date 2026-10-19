@@ -62,6 +62,19 @@ export function tierReasonFor(termType, industry = 'general', forcedTier = null)
   return shifted ? `${reason} Raised one tier for ${INDUSTRIES[industry].label.toLowerCase()}.` : reason;
 }
 
+/**
+ * The judge is a model and tends to be overconfident; code decides how far to trust it (doc §2).
+ * A failed check caps the score, and each further failure lowers the cap.
+ */
+export const CHECK_CAPS = { importedAgrees: 0.75, siblingAgrees: 0.85, styleFit: 0.7, selfConsistent: 0.7 };
+
+export function calibrateConfidence(confidence, checks = {}) {
+  const failed = Object.keys(CHECK_CAPS).filter((k) => checks[k] === false);
+  if (!failed.length) return confidence;
+  const cap = Math.min(...failed.map((k) => CHECK_CAPS[k])) - 0.1 * (failed.length - 1);
+  return Math.round(Math.max(0, Math.min(confidence, cap)) * 100) / 100;
+}
+
 /** Critical and High → hard; Standard → guidance; Low → hard (keep as source). */
 export function defaultEnforcement(tier) {
   return tier === 'standard' ? 'guidance' : 'hard';
@@ -88,7 +101,8 @@ export function seededUnit(str) {
     h ^= str.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
-  h += h << 13; h ^= h >>> 7; h += h << 3; h ^= h >>> 17; h += h << 5;
+  // murmur3 finalizer: sequential ids like c_0001, c_0002 must not cluster
+  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
   return (h >>> 0) / 4294967296;
 }
 

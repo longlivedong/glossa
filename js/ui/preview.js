@@ -44,13 +44,13 @@ export function mount(el, store, ctx) {
       body = `${!live || run.mode === 'demo' ? '<p class="subtle">Precomputed in the sample run</p>' : ''}
         <div class="pv-list">${items.map(itemHtml).join('')}</div>`;
     } else if (!hasPublished) {
-      body = `<p class="empty">Nothing has been published yet. Accept a few entries or let auto-approved ones through, then come back.</p>`;
+      body = `<p class="rp-empty">Nothing has been published yet. Accept a few entries or let auto-approved ones through, then come back.</p>`;
     } else {
-      body = `<p class="empty">${live ? 'No preview yet. Run it to translate a few site sentences with this glossary.' : 'No preview in this sample run.'}</p>`;
+      body = `<p class="rp-empty">${live ? 'No preview yet. Run it to translate a few site sentences with this glossary.' : 'No preview in this sample run.'}</p>`;
     }
     const canRun = live && run && run.mode === 'live' && hasPublished;
     el.innerHTML = `
-      <div class="view-pad stack">
+      <div class="stack">
         <div class="row pv-head">
           <p class="pv-lede">Hard terms must appear in the translation; a miss is rejected and retried. Guidance terms are preferred, not forced.</p>
           ${live ? `<button type="button" class="btn btn-primary" data-run ${busy || !canRun ? 'disabled' : ''}>${busy ? 'Running…' : 'Run enforcement preview'}</button>` : ''}

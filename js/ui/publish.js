@@ -1,7 +1,9 @@
 // Step 7: what publishes, what is held, and the two exports.
 import { publishedEntries } from '../rules.js';
-import { LOCALE_LABEL, STATUS_LABEL } from '../schema.js';
-import { esc, fmtInt, download } from './dom.js';
+import { LOCALE_LABEL, STATUS_LABEL, REJECT_REASONS } from '../schema.js';
+import { esc, fmtInt, download, tierBadge, statusBadge } from './dom.js';
+
+const REJECT_LABEL = Object.fromEntries(REJECT_REASONS);
 
 const today = () => new Date().toISOString().slice(0, 10);
 const csvCell = (v) => {
@@ -15,14 +17,32 @@ export function mount(el, store, ctx) {
     const n = (s) => run.concepts.filter((c) => c.status === s).length;
     return { accepted: n('accepted'), edited: n('edited'), rejected: n('rejected'), asked: n('asked_client'), escalated: n('escalated') };
   };
+  const open = { pending: true, client: true, held: true, published: true, rejected: false };
 
-  const list = (title, sub, items, fmt) => items.length ? `
-    <section class="p-group panel">
-      <h3>${esc(title)}</h3>
-      <p class="muted">${esc(sub)}</p>
-      <ul class="p-list">${items.slice(0, 50).map(fmt).join('')}</ul>
-      ${items.length > 50 ? `<p class="subtle">and ${fmtInt(items.length - 50)} more</p>` : ''}
-    </section>` : '';
+  const MAX_ROWS = 50;
+  const modeChip = (mode, flagged) => `<span class="mode-chip mode-${esc(mode)}">${mode === 'hard' ? 'Hard' : 'Guidance'}</span>${flagged ? ' <span class="flag-chip">flagged</span>' : ''}`;
+  const statusText = (c) => {
+    if (c.status !== 'pending') return statusBadge(c.status);
+    return `<span class="status-badge status-auto">${c.bucket === 'random_check' ? 'Random check' : c.bucket === 'queue' ? 'Pending' : 'Auto-approved'}</span>`;
+  };
+  const term = (c) => `<th scope="row"><span class="pt-src">${esc(c.source)}</span></th>`;
+
+  const group = (key, title, sub, items, head, rowFn, tone = '') => {
+    if (!items.length) return '';
+    const more = items.length > MAX_ROWS ? `<p class="subtle pt-more">and ${fmtInt(items.length - MAX_ROWS)} more in the export</p>` : '';
+    return `
+    <details class="panel p-group ${tone}" data-group="${key}"${open[key] ? ' open' : ''}>
+      <summary><span class="p-sum-title">${esc(title)}</span><span class="p-count">${fmtInt(items.length)}</span></summary>
+      <div class="p-body">
+        <p class="muted">${esc(sub)}</p>
+        <div class="table-scroll"><table class="pt">
+          <thead><tr>${head.map((h) => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead>
+          <tbody>${items.slice(0, MAX_ROWS).map(rowFn).join('')}</tbody>
+        </table></div>
+        ${more}
+      </div>
+    </details>`;
+  };
 
   function render() {
     const run = store.get();
@@ -31,26 +51,46 @@ export function mount(el, store, ctx) {
     const k = counts(run);
     const hard = pub.published.filter((p) => p.mode === 'hard').length;
     const soft = pub.published.length - hard;
-    const tile = (n, label) => `<div class="p-tile panel"><span class="p-n">${fmtInt(n)}</span><span class="p-l">${esc(label)}</span></div>`;
+    const decided = run.concepts.filter((c) => c.status !== 'pending').length;
+    const tile = (n, label, cls) => `<div class="p-tile panel ${cls}"><span class="p-n">${fmtInt(n)}</span><span class="p-l">${esc(label)}</span></div>`;
     el.innerHTML = `
-      <div class="p-wrap stack">
-        <div>
-          <h2 class="view-title">Publish</h2>
-          <p class="muted"><strong>${fmtInt(pub.published.length)}</strong> entries publish: ${fmtInt(hard)} hard, ${fmtInt(soft)} guidance</p>
-          ${run.totals ? `<p class="subtle">Counts cover the ${fmtInt(run.concepts.length)}-entry sample in this demo.</p>` : ''}
+      <div class="p-wrap stack-lg">
+        <div class="view-head">
+          <div>
+            <h2 class="view-title">Publish</h2>
+            <p class="muted"><strong>${fmtInt(pub.published.length)}</strong> entries publish: ${fmtInt(hard)} hard, ${fmtInt(soft)} guidance</p>
+            ${run.totals ? `<p class="subtle">Counts cover the ${fmtInt(run.concepts.length)}-entry sample in this demo.</p>` : ''}
+          </div>
+          <div class="row p-actions">
+            <button type="button" class="btn btn-primary" data-export="json">Export glossary (JSON)</button>
+            <button type="button" class="btn" data-export="csv">Export CSV</button>
+          </div>
         </div>
         <div class="p-tiles">
-          ${tile(k.accepted, 'Accepted')}${tile(k.edited, 'Edited')}${tile(k.rejected, 'Rejected')}${tile(k.asked, 'Awaiting client')}${tile(k.escalated, 'Escalated')}${tile(pub.pendingForLead.length, 'Still pending above the line')}
+          ${tile(decided, 'Decided', 't-ok')}${tile(pub.pendingForLead.length, 'Still pending for the lead', 't-pending')}${tile(k.asked, 'Awaiting client', 't-warn')}
         </div>
-        ${list('Still pending: will not publish silently; listed for the lead', 'These sit above the line and have no decision yet.', pub.pendingForLead, (c) => `<li><strong>${esc(c.source)}</strong> <span class="muted">→ ${esc(c.proposal.text)}</span></li>`)}
-        ${list('Awaiting client: ships as guidance, flagged, until the client replies', 'The question is on file with each entry.', pub.awaitingClient, (c) => `<li><strong>${esc(c.source)}</strong> <span class="muted">${esc(c.decision?.question || '')}</span></li>`)}
-        ${list('Escalated: held for the locale lead', STATUS_LABEL.escalated + '.', pub.held, (c) => `<li><strong>${esc(c.source)}</strong> <span class="muted">drafter: ${esc(c.decision?.previousText || c.proposal.text)}${c.decision?.newText ? ` · linguist: ${esc(c.decision.newText)}` : ''}</span></li>`)}
-        <div class="row p-actions">
-          <button type="button" class="btn btn-primary" data-export="json">Export glossary (JSON)</button>
-          <button type="button" class="btn" data-export="csv">Export CSV</button>
-        </div>
+        ${group('pending', 'Still pending: will not publish silently; listed for the lead', 'These sit above the line and have no decision yet.',
+          pub.pendingForLead, ['Term', 'Drafter rendering', 'Tier', 'Mode'],
+          (c) => `<tr>${term(c)}<td class="pt-tgt">${esc(c.proposal.text)}</td><td>${tierBadge(c.tier)}</td><td>${modeChip(c.enforcement)}</td></tr>`, 'is-pending')}
+        ${group('client', 'Awaiting client: ships as guidance, flagged, until the client replies', 'The question is on file with each entry.',
+          pub.awaitingClient, ['Term', 'Rendering', 'Question to the client', 'Tier'],
+          (c) => `<tr>${term(c)}<td class="pt-tgt">${esc(c.proposal.text)}</td><td class="pt-note">${esc(c.decision?.question || '')}</td><td>${tierBadge(c.tier)}</td></tr>`, 'is-warn')}
+        ${group('held', 'Escalated: held for the locale lead', STATUS_LABEL.escalated + '.',
+          pub.held, ['Term', 'Drafter', 'Linguist', 'Tier'],
+          (c) => `<tr>${term(c)}<td class="pt-tgt">${esc(c.decision?.previousText || c.proposal.text)}</td><td class="pt-tgt">${esc(c.decision?.newText || '—')}</td><td>${tierBadge(c.tier)}</td></tr>`, 'is-bad')}
+        ${group('published', 'Publishing', 'What ships, with the enforcement mode the translation step will apply.',
+          pub.published, ['Term', 'Rendering', 'Tier', 'Mode', 'Status'],
+          ({ concept: c, mode, flagged }) => `<tr>${term(c)}<td class="pt-tgt">${esc(c.proposal.text)}</td><td>${tierBadge(c.tier)}</td><td>${modeChip(mode, flagged)}</td><td>${statusText(c)}</td></tr>`)}
+        ${group('rejected', 'Rejected: will not publish', 'The linguist rejected the drafter\'s rendering; the reason stays on file.',
+          pub.rejected, ['Term', 'Drafter rendering', 'Reason', 'Tier'],
+          (c) => `<tr>${term(c)}<td class="pt-tgt">${esc(c.proposal.text)}</td><td class="pt-note">${esc((REJECT_LABEL[c.decision?.reason] || '') + (c.decision?.note ? `: ${c.decision.note}` : ''))}</td><td>${tierBadge(c.tier)}</td></tr>`)}
       </div>`;
   }
+
+  el.addEventListener('toggle', (e) => {
+    const d = e.target.closest?.('[data-group]');
+    if (d) open[d.dataset.group] = d.open;
+  }, true);
 
   const target = (run) => run.locale.target;
 

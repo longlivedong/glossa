@@ -114,7 +114,6 @@ export function createCard(el, store, ctx, nav) {
   function html(c) {
     const run = store.get();
     const terms = [c.source, ...c.variants];
-    const differ = new Set(c.renderings).size > 1;
     const sibLabel = c.sibling ? (LOCALE_LABEL[c.sibling.locale] ?? c.sibling.locale) : '';
     const dis = importDisagrees(c);
     const ck = c.judgeChecks;
@@ -129,7 +128,6 @@ export function createCard(el, store, ctx, nav) {
           <span class="tip-wrap">${tierBadge(c.tier, c.tierReason)}${c.tierReason ? `<span class="tip" role="tooltip">${esc(c.tierReason)}</span>` : ''}</span>
           <span class="meta-item">${esc(TYPE_LABEL(c.termType))}</span>
           <span class="meta-item">×${fmtInt(c.frequency)} on the site</span>
-          <span class="meta-item">${fmtInt(c.pages.length)} page${c.pages.length === 1 ? '' : 's'}</span>
         </div>
       </header>
       <div class="card-grid">
@@ -138,7 +136,6 @@ export function createCard(el, store, ctx, nav) {
           <p class="card-proposal">${esc(c.proposal.text)}</p>
           <p class="muted card-reason">${esc(c.proposal.reason)}</p>
           <p class="card-conf"><span class="subtle">Judge confidence</span> ${confBar(c.confidence)}</p>
-          ${differ ? `<p class="subtle">Phrasings: ${c.renderings.map(esc).join(' · ')}</p>` : ''}
         </section>
         <section class="card-judge" aria-label="Judge checks">
           <h3 class="section-title">Judge checks</h3>

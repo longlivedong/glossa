@@ -1,7 +1,7 @@
 // The single store: current run, per-concept undo stacks, UI state. Persists to localStorage.
 import { capacityFor, computeLine } from './rules.js';
 
-const STORAGE_KEY = 'glossary-review:v1';
+const STORAGE_KEY = 'glossa:v1';
 const DEFAULT_UI = { tab: 'queue', selectedId: null, tierFilter: 'all', showRandom: false };
 
 function readStorage() {

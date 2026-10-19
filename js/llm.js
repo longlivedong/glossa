@@ -135,7 +135,12 @@ async function requestWithRetry(body, gapMs, task, signal) {
     } catch (e) {
       if (signal?.aborted) throw e;
       if (!retryable(e) || attempt >= MAX_RETRIES) throw new Error(friendly(e, task));
-      const backoff = e.retryAfter ? e.retryAfter * 1000 : 2000 * 2 ** attempt;
+      // A wait of minutes means a daily quota, not a per-minute one: stop and say so instead of hanging.
+      if (e.retryAfter > 120 || /per ?day|PerDay/i.test(e.message)) {
+        throw new Error(`Daily quota reached for this model during ${task}. Switch LLM_MODEL / JUDGE_MODEL in .env to another model, or try again tomorrow. Finished steps are cached, so a retry resumes.`);
+      }
+      // Overload errors (5xx) clear in tens of seconds, not two.
+      const backoff = e.retryAfter ? e.retryAfter * 1000 : (e.status >= 500 ? 15000 : 2000) * 2 ** attempt;
       notBefore = Math.max(notBefore, Date.now() + backoff);
     }
   }

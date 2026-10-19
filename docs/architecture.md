@@ -27,18 +27,18 @@ flowchart TD
 
 ## 2. Runtime: demo vs live
 
-Demo mode is a static site with bundled sample data and no key. Live mode adds a small local Node server that holds the key, fetches pages and forwards LLM calls; the browser never sees the key.
+Without a configured key the app shows a bundled sample run. Live mode adds a server that holds the key, fetches pages and forwards LLM calls; the browser never sees the key. The server runs locally (`node server.mjs`) or as three Vercel functions that reuse the same handlers.
 
 ```mermaid
 flowchart LR
-  subgraph Demo["Demo mode (GitHub Pages)"]
+  subgraph Demo["Sample mode (no key)"]
     B1["Browser"] --> S1["Static files + sample run (demo-data.js)"]
   end
-  subgraph Live["Live mode (local)"]
-    B2["Browser"] <-->|"/api/health, /api/fetch, /api/llm"| SV["server.mjs"]
+  subgraph Live["Live mode (local or Vercel)"]
+    B2["Browser"] <-->|"/api/health, /api/fetch, /api/llm"| SV["server.mjs or api/*"]
     SV -->|"HTTP, robots.txt respected"| W["Target website"]
     SV -->|"OpenAI-compatible API"| L["LLM provider"]
-    ENV[".env: key, base URL, model"] -.-> SV
+    ENV[".env or Vercel env vars: key, base URL, models"] -.-> SV
   end
 ```
 

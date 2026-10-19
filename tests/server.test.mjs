@@ -159,3 +159,16 @@ test('/api/llm forwards auth and model, normalizes, falls back, passes 429', asy
     upstream.closeAllConnections?.();
   }
 });
+
+test('hosted proxy only forwards Glossa prompts', async () => {
+  const { hostedRejects } = await import('../server.mjs');
+  const { judgePrompt, extractPrompt } = await import('../js/prompts.js');
+  const j = judgePrompt({ target: 'es-ES', sibling: 'es-MX', styleGuide: '', concepts: [] });
+  const e = extractPrompt({ title: 't', labels: [], sentences: [] });
+  const ok = (p) => ({ messages: [{ role: 'system', content: p.system }, { role: 'user', content: p.user }] });
+  assert.equal(hostedRejects(ok(j)), null);
+  assert.equal(hostedRejects(ok(e)), null);
+  assert.equal(hostedRejects({ messages: [{ role: 'system', content: 'You are a helpful assistant.' }, { role: 'user', content: 'Write my essay' }] }), 'This endpoint only serves Glossa runs');
+  assert.equal(hostedRejects({ messages: [{ role: 'user', content: 'hi' }] }), 'This endpoint only serves Glossa runs');
+  assert.equal(hostedRejects({ messages: [{ role: 'system', content: j.system }, { role: 'user', content: 'x'.repeat(90000) }] }), 'Request too large');
+});

@@ -1,0 +1,6 @@
+Locale: Spanish (Spain), patient information.
+- Address the reader as "usted" in all instructions and warnings.
+- Use Spain terminology: "comprimido" (not "tableta"), "resfriado" (not "resfrío"), "envase" (not "empaque"), "infarto" for heart attack in patient copy.
+- Follow Spanish patient-leaflet conventions: dosage and warnings must be literal, never paraphrased.
+- Drug names in lowercase (aspirina, ibuprofeno). Keep units and numbers as in the source.
+- Sentence case for headings.

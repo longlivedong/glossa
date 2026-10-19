@@ -51,12 +51,13 @@ function isLocalHost(h) {
 }
 
 function roleConfig(env, role) {
-  const d = { base: env.LLM_BASE_URL || '', key: env.LLM_API_KEY || '', model: env.LLM_MODEL || '' };
+  const d = { base: env.LLM_BASE_URL || '', key: env.LLM_API_KEY || '', model: env.LLM_MODEL || '', effort: env.LLM_REASONING_EFFORT || '' };
   if (role !== 'judge') return d;
   const base = env.JUDGE_BASE_URL || d.base;
   // Do not send the drafter key to a different host just because the judge key is unset.
   const key = env.JUDGE_API_KEY || (base === d.base ? d.key : '');
-  return { base, key, model: env.JUDGE_MODEL || d.model };
+  const effort = env.JUDGE_REASONING_EFFORT || (base === d.base ? d.effort : '');
+  return { base, key, model: env.JUDGE_MODEL || d.model, effort };
 }
 
 function hostOf(base) {
@@ -279,13 +280,13 @@ export function extractPage(html, baseUrl) {
 
 // ---------- handlers ----------
 
-function sendJson(res, status, obj) {
+export function sendJson(res, status, obj) {
   const body = JSON.stringify(obj);
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(body);
 }
 
-function health(env) {
+export function health(env) {
   const mock = env.LLM_PROVIDER === 'mock';
   const live = isLive(env);
   const info = (role) => {
@@ -294,10 +295,11 @@ function health(env) {
     return { host: hostOf(c.base), model: c.model || null };
   };
   const gap = Number(env.LLM_MIN_GAP_MS);
-  return { live, mock, drafter: info('drafter'), judge: info('judge'), minGapMs: Number.isFinite(gap) && gap >= 0 && env.LLM_MIN_GAP_MS !== '' && env.LLM_MIN_GAP_MS != null ? gap : 4000 };
+  const maxPages = Math.min(10, Math.max(1, Number(env.MAX_PAGES) || 10));
+  return { live, mock, hosted: isHosted(env), maxPages, drafter: info('drafter'), judge: info('judge'), minGapMs: Number.isFinite(gap) && gap >= 0 && env.LLM_MIN_GAP_MS !== '' && env.LLM_MIN_GAP_MS != null ? gap : 4000 };
 }
 
-async function handleFetch(req, res, query) {
+export async function handleFetch(req, res, query) {
   const raw = query.get('url');
   let u;
   try { u = new URL(raw); } catch { return sendJson(res, 400, { error: 'Enter a full URL starting with http:// or https://' }); }
@@ -337,6 +339,27 @@ function readBody(req) {
   });
 }
 
+// On a hosted deployment the key is the owner's, so the proxy only forwards Glossa's own prompts, capped.
+const GLOSSA_PROMPTS = [
+  /^You pick glossary terms from one page/, /^You group glossary candidates/, /^You are a terminologist building the /,
+  /^You localise website interfaces into /, /^For each English term from a website, first write m:/,
+  /^You localise website terms into /, /^You review proposed /, /^You translate English website sentences into /,
+  /^A previous .{1,40} translation left out required glossary terms/,
+];
+const HOSTED_MAX_TOKENS = 4096;
+const HOSTED_MAX_CHARS = 80000;
+
+export const isHosted = (env) => env.GLOSSA_HOSTED === '1' || !!env.VERCEL;
+
+export function hostedRejects(body) {
+  const msgs = body.messages;
+  if (msgs.length > 4) return 'Too many messages';
+  if (!msgs.every((m) => m && typeof m.content === 'string' && ['system', 'user', 'assistant'].includes(m.role))) return 'Invalid messages';
+  if (msgs.reduce((n, m) => n + m.content.length, 0) > HOSTED_MAX_CHARS) return 'Request too large';
+  if (msgs[0].role !== 'system' || !GLOSSA_PROMPTS.some((re) => re.test(msgs[0].content))) return 'This endpoint only serves Glossa runs';
+  return null;
+}
+
 async function callUpstream(cfg, payload) {
   const headers = { 'Content-Type': 'application/json' };
   if (cfg.key) headers.Authorization = `Bearer ${cfg.key}`;
@@ -351,7 +374,7 @@ async function callUpstream(cfg, payload) {
   }
 }
 
-async function handleLlm(req, res, env) {
+export async function handleLlm(req, res, env) {
   const t0 = Date.now();
   let role = '?';
   let status = 500;
@@ -364,25 +387,31 @@ async function handleLlm(req, res, env) {
     if (env.LLM_PROVIDER === 'mock') return done(400, { error: 'mock mode: the browser answers LLM calls locally' });
     if (!isLive(env)) return done(503, { error: 'No LLM is configured. Set LLM_BASE_URL, LLM_MODEL and LLM_API_KEY in .env' });
     let body;
-    try { body = JSON.parse(await readBody(req)); } catch (e) {
+    try { body = req.body && typeof req.body === 'object' ? req.body : JSON.parse(await readBody(req)); } catch (e) {
       if (e instanceof HttpError) return done(e.status, { error: e.message });
       return done(400, { error: 'Invalid JSON body' });
     }
     role = body && body.role === 'judge' ? 'judge' : 'drafter';
     if (!body || !Array.isArray(body.messages) || !body.messages.length) return done(400, { error: 'messages is required' });
+    const hosted = isHosted(env);
+    const rejected = hosted && hostedRejects(body);
+    if (rejected) return done(403, { error: rejected, retryAfter: null });
     const cfg = roleConfig(env, role);
     const payload = { model: cfg.model, messages: body.messages };
-    if (body.max_tokens) payload.max_tokens = body.max_tokens;
+    if (body.max_tokens) payload.max_tokens = hosted ? Math.min(Number(body.max_tokens) || 0, HOSTED_MAX_TOKENS) : body.max_tokens;
     if (typeof body.temperature === 'number') payload.temperature = body.temperature;
     if (body.json) payload.response_format = { type: 'json_object' };
+    // Thinking models (e.g. newer Gemini) spend max_tokens on hidden reasoning unless told not to.
+    if (cfg.effort) payload.reasoning_effort = cfg.effort;
 
     let up;
     try {
       up = await callUpstream(cfg, payload);
-      if (up.status === 400 && payload.response_format) {
+      if (up.status === 400 && (payload.response_format || payload.reasoning_effort)) {
         const peek = await up.text();
-        if (/response_format/i.test(peek)) {
-          delete payload.response_format;
+        const unsupported = ['response_format', 'reasoning_effort'].filter((k) => payload[k] && new RegExp(k, 'i').test(peek));
+        if (unsupported.length) {
+          for (const k of unsupported) delete payload[k];
           up = await callUpstream(cfg, payload);
         } else {
           up = new Response(peek, { status: 400, headers: up.headers });
@@ -395,7 +424,9 @@ async function handleLlm(req, res, env) {
     let j = null;
     try { j = JSON.parse(text); } catch { /* non-JSON body */ }
     if (!up.ok) {
-      const ra = parseFloat(up.headers.get('retry-after'));
+      // Gemini puts the wait in the body ("retryDelay": "24s" / "retry in 24.3s") instead of a Retry-After header.
+      const bodyDelay = /retryDelay"?\s*:\s*"(\d+(?:\.\d+)?)s|retry in (\d+(?:\.\d+)?)s/i.exec(text);
+      const ra = parseFloat(up.headers.get('retry-after') || (bodyDelay && (bodyDelay[1] || bodyDelay[2])));
       const msg = (j && ((j.error && j.error.message) || (typeof j.error === 'string' && j.error) || j.message)) || text.slice(0, 300) || `HTTP ${up.status}`;
       return done(up.status, { error: String(msg), retryAfter: Number.isFinite(ra) ? ra : null });
     }
