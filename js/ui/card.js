@@ -2,14 +2,19 @@
 import { REJECT_REASONS, SCOPE_LABEL, LOCALE_LABEL } from '../schema.js';
 import { importDisagrees } from '../rules.js';
 import { esc, highlight, tierBadge, confBar, statusBadge, fmtInt } from './dom.js';
+import { enter } from '../motion.js';
 
 const q = (s) => `“${s}”`;
 const TYPE_LABEL = (t) => (t || '').replace(/_/g, ' ');
 
 function check(label, v) {
-  const [cls, glyph, word] = v === true ? ['yes', '✓', 'yes'] : v === false ? ['no', '✗', 'no'] : ['na', '—', 'n/a'];
-  return `<li class="chk chk-${cls}"><span class="chk-mark" aria-hidden="true">${glyph}</span><span class="chk-label">${esc(label)}</span><span class="chk-word">${v == null ? '—, n/a' : `<span class="visually-hidden">${word}</span>`}</span></li>`;
+  if (v == null) return `<li class="chk chk-na"><span class="chk-mark" aria-hidden="true">—</span><span class="chk-label">${esc(label)}: not available</span></li>`;
+  const [cls, glyph, word] = v === true ? ['yes', '✓', 'yes'] : ['no', '✗', 'no'];
+  return `<li class="chk chk-${cls}"><span class="chk-mark" aria-hidden="true">${glyph}</span><span class="chk-label">${esc(label)}</span><span class="chk-word"><span class="visually-hidden">${word}</span></span></li>`;
 }
+
+const UNDO_VERB = { accept: 'accept', edit: 'edit', reject: 'reject', ask_client: 'question to the client' };
+const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /**
  * @param {HTMLElement} el
@@ -18,6 +23,7 @@ function check(label, v) {
 export function createCard(el, store, ctx, nav) {
   let st = { id: null, mode: null, newText: '', reason: 'wrong_meaning', note: '', question: '' };
   let lastSig = '';
+  const decided = []; // ids decided here, newest last, for the Z shortcut
 
   const syncDraft = () => {
     const g = (sel) => el.querySelector(sel);
@@ -42,13 +48,24 @@ export function createCard(el, store, ctx, nav) {
     const id = c.id;
     const upcoming = nav.next(id);
     const escalate = c.tier === 'critical' && (action === 'edit' || action === 'reject');
+    const inCard = el.contains(document.activeElement);
     store.act(id, action, payload);
+    decided.push(id);
     st = { id: null, mode: null, newText: '', reason: 'wrong_meaning', note: '', question: '' };
     ctx.toast(escalate ? `Escalated ${q(c.source)}: second linguist, then locale lead` : message, {
       actionLabel: 'Undo',
+      actionAria: `Undo ${UNDO_VERB[action] ?? action} of ${q(c.source)}`,
       onAction: () => { store.undo(id); store.setUI({ selectedId: id }); },
     });
-    if (upcoming) store.setUI({ selectedId: upcoming });
+    if (upcoming) {
+      store.setUI({ selectedId: upcoming });
+      // A form (Save, Send, Confirm) was focused and is gone now: land on the next card's Accept, not on <body>.
+      if (inCard && !el.contains(document.activeElement)) el.querySelector('[data-act="accept"]')?.focus();
+      // Narrow screens stack the list above the card: bring the next card into view.
+      if (window.matchMedia('(max-width: 819px)').matches) {
+        el.querySelector('.card')?.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
+      }
+    }
   };
 
   const doEdit = (c, applyToConcept) => {
@@ -108,7 +125,8 @@ export function createCard(el, store, ctx, nav) {
       <button type="button" class="btn" data-act="edit" data-fk="a-edit">Edit <kbd>E</kbd></button>
       <button type="button" class="btn" data-act="reject" data-fk="a-reject">Reject <kbd>R</kbd></button>
       <button type="button" class="btn" data-act="ask" data-fk="a-ask">Ask client <kbd>C</kbd></button>
-    </div>`;
+    </div>
+    <p class="card-legend"><span aria-hidden="true">↑↓</span><span class="visually-hidden">Up and down arrows</span> or J/K next/previous · Z undo last decision</p>`;
   }
 
   function html(c) {
@@ -125,7 +143,7 @@ export function createCard(el, store, ctx, nav) {
           ${c.variants.length ? `<p class="subtle">also: ${esc(c.variants.join(', '))}</p>` : ''}
         </div>
         <div class="card-meta">
-          <span class="tip-wrap">${tierBadge(c.tier, c.tierReason)}${c.tierReason ? `<span class="tip" role="tooltip">${esc(c.tierReason)}</span>` : ''}</span>
+          <span class="tip-wrap">${tierBadge(c.tier, c.tierReason, 'card-tier-tip')}${c.tierReason ? `<span class="tip" role="tooltip" id="card-tier-tip">${esc(c.tierReason)}</span>` : ''}</span>
           <span class="meta-item">${esc(TYPE_LABEL(c.termType))}</span>
           <span class="meta-item">×${fmtInt(c.frequency)} on the site</span>
         </div>
@@ -178,7 +196,8 @@ export function createCard(el, store, ctx, nav) {
       st.id = null;
       return;
     }
-    if (st.id !== c.id) st = { id: c.id, mode: null, newText: '', reason: 'wrong_meaning', note: '', question: '' };
+    const opened = st.id !== c.id;
+    if (opened) st = { id: c.id, mode: null, newText: '', reason: 'wrong_meaning', note: '', question: '' };
     else if (!force) syncDraft();
     const sig = JSON.stringify([c, st.mode, st.reason]);
     const inside = el.contains(document.activeElement) && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
@@ -191,6 +210,7 @@ export function createCard(el, store, ctx, nav) {
       target.focus();
       if (target.matches('input[type="text"]')) target.setSelectionRange(target.value.length, target.value.length);
     }
+    if (opened) enter(el.firstElementChild, { y: 6, duration: 0.2 });
   }
 
   el.addEventListener('click', (e) => {
@@ -242,9 +262,18 @@ export function createCard(el, store, ctx, nav) {
     const c = store.concept(st.id);
     if (!c) return false;
     const k = e.key.toLowerCase();
-    if (k === 'arrowright' || k === 'arrowleft') {
-      const to = nav.step(c.id, k === 'arrowright' ? 1 : -1);
+    const dir = { arrowright: 1, arrowdown: 1, j: 1, arrowleft: -1, arrowup: -1, k: -1 }[k];
+    if (dir) {
+      const to = nav.step(c.id, dir);
       if (to) store.setUI({ selectedId: to });
+      return true;
+    }
+    if (k === 'z' && !st.mode) {
+      // Undo the most recent decision made in this card that can still be undone, and go back to it.
+      while (decided.length) {
+        const id = decided.pop();
+        if (store.canUndo(id)) { store.undo(id); store.setUI({ selectedId: id }); ctx.toast(`Undid ${q(store.concept(id)?.source ?? id)}`); break; }
+      }
       return true;
     }
     if (c.status !== 'pending' || st.mode) return false;

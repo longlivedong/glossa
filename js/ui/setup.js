@@ -71,7 +71,8 @@ export function mount(el, store, ctx) {
     if (!h) return '';
     const d = h.drafter ? `${esc(h.drafter.model)} (${esc(h.drafter.host)})` : 'unknown';
     const j = h.judge ? esc(h.judge.model) : 'unknown';
-    return `<p class="subtle">Models: ${d} · ${j}</p>${h.mock ? '<p class="subtle"><strong>Mock mode:</strong> canned answers, no API calls</p>' : ''}`;
+    if (h.mock) return '<p class="subtle"><strong>Mock mode:</strong> canned answers, no API calls</p>';
+    return `<p class="subtle">Models: drafter ${d} · judge ${j}</p>`;
   };
 
   const renderForm = () => {

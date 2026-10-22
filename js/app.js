@@ -1,15 +1,17 @@
 // Boot: detect demo vs live mode, load the run, mount the header and views, route tabs.
 import { createStore } from './state.js';
-import { esc } from './ui/dom.js';
+import { esc, fmtInt } from './ui/dom.js';
+import { stagger } from './motion.js';
 
 export const REPO_URL = 'https://github.com/longlivedong/glossa';
 
+// `short` is the label at phone width (css/ux.css swaps it in at <=480px).
 const VIEWS = [
-  { id: 'setup', label: 'Run on a website', module: './ui/setup.js', liveOnly: true },
-  { id: 'queue', label: 'Queue', module: './ui/queue.js' },
-  { id: 'auto', label: 'Auto-approved', module: './ui/auto.js' },
-  { id: 'publish', label: 'Publish', module: './ui/publish.js' },
-  { id: 'report', label: 'Report', module: './ui/report.js' },
+  { id: 'setup', label: 'Run on a website', short: 'Run', module: './ui/setup.js', liveOnly: true },
+  { id: 'queue', label: 'Queue', short: 'Queue', module: './ui/queue.js' },
+  { id: 'auto', label: 'Auto-approved', short: 'Auto', module: './ui/auto.js' },
+  { id: 'publish', label: 'Publish', short: 'Publish', module: './ui/publish.js' },
+  { id: 'report', label: 'Report', short: 'Report', module: './ui/report.js' },
 ];
 
 async function detectHealth() {
@@ -28,20 +30,39 @@ async function detectHealth() {
   }
 }
 
-function toast(message, { actionLabel, onAction, timeout = 5000 } = {}) {
+const TOAST_MS = 8000;
+const TOAST_MAX = 2; // keep the previous toast too, so its Undo isn't lost to the next decision
+
+/** Toast with an optional action. Stays 8s, pauses while hovered or focused, and stacks at most two. */
+function toast(message, { actionLabel, actionAria, onAction, timeout = TOAST_MS } = {}) {
   const root = document.getElementById('toast-root');
   const el = document.createElement('div');
   el.className = 'toast';
   el.innerHTML = `<span>${esc(message)}</span>`;
+  let remaining = timeout;
+  let startedAt = 0;
+  let timer = null;
+  let hovered = false;
+  let focused = false;
+  const close = () => { clearTimeout(timer); el.remove(); };
+  const run = () => { if (!timer) { startedAt = Date.now(); timer = setTimeout(close, remaining); } };
+  const hold = () => { if (timer) { clearTimeout(timer); timer = null; remaining = Math.max(1500, remaining - (Date.now() - startedAt)); } };
+  const sync = () => (hovered || focused ? hold() : run());
+  el.addEventListener('mouseenter', () => { hovered = true; sync(); });
+  el.addEventListener('mouseleave', () => { hovered = false; sync(); });
+  el.addEventListener('focusin', () => { focused = true; sync(); });
+  el.addEventListener('focusout', (e) => { if (!el.contains(e.relatedTarget)) { focused = false; sync(); } });
   if (actionLabel && onAction) {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = actionLabel;
-    b.addEventListener('click', () => { onAction(); el.remove(); });
+    if (actionAria) b.setAttribute('aria-label', actionAria);
+    b.addEventListener('click', () => { onAction(); close(); });
     el.append(b);
   }
-  root.replaceChildren(el);
-  setTimeout(() => el.remove(), timeout);
+  root.append(el);
+  while (root.children.length > TOAST_MAX) root.firstElementChild.remove();
+  run();
 }
 
 // Re-render chrome only when its markup changes, so focus and hover state survive store updates.
@@ -73,7 +94,7 @@ function renderBrand(run, live) {
     pill = `<span class="run-pill is-sample"><span class="run-dot" aria-hidden="true"></span>Sample run · fictional data</span>`;
   } else if (run) {
     const when = shortDate(run.createdAt);
-    pill = `<span class="run-pill is-live" title="${esc(run.site?.url || '')}"><span class="run-dot" aria-hidden="true"></span>Live run · <span class="run-site">${esc(run.site?.name || run.site?.url || 'site')}</span>${when ? ` · ${esc(when)}` : ''}</span>`;
+    pill = `<span class="run-pill is-live" title="${esc(run.site?.url || '')}"><span class="run-dot" aria-hidden="true"></span>Live run${when ? ` · ${esc(when)}` : ''}</span>`;
   }
   setHtml(el, `${pill}${live ? '<button type="button" class="btn btn-primary btn-sm" data-new-run>New run</button>' : ''}`);
 }
@@ -119,6 +140,20 @@ async function main() {
       });
   }
 
+  // Tabs are built once; store updates only touch aria-selected, tabindex, the count and the panels' hidden flag,
+  // so focus stays on the tab that was activated. Roving tabindex with Left/Right/Home/End inside the tablist.
+  tabbar.innerHTML = views.map((v) => `
+    <button class="tab" role="tab" type="button" id="tab-${v.id}" aria-controls="view-${v.id}" aria-selected="false" tabindex="-1"
+      data-tab="${v.id}"${v.short !== v.label ? ` data-short="${esc(v.short)}"` : ''}><span class="tab-label">${esc(v.label)}</span>${v.id === 'queue' ? '<span class="count"><span aria-hidden="true" data-count></span><span class="visually-hidden" data-count-label></span></span>' : ''}</button>`).join('');
+  const tabEls = [...tabbar.querySelectorAll('[role="tab"]')];
+  let shownTab = null;
+
+  const scrollTabIntoView = (b) => {
+    const d = b.getBoundingClientRect().left - tabbar.getBoundingClientRect().left;
+    const target = tabbar.scrollLeft + d - (tabbar.clientWidth - b.offsetWidth) / 2;
+    tabbar.scrollTo({ left: Math.max(0, target), behavior: 'auto' });
+  };
+
   const renderTabs = () => {
     const footNote = document.getElementById('footer-note');
     if (footNote) footNote.textContent = store.get()?.mode === 'live'
@@ -128,28 +163,115 @@ async function main() {
     const run = store.get();
     const active = views.some((v) => v.id === ui.tab) ? ui.tab : 'queue';
     const pending = run ? run.concepts.filter((c) => c.bucket === 'queue' && c.status === 'pending').length : 0;
-    const counts = { queue: pending };
-    tabbar.innerHTML = views.map((v) => `
-      <button class="tab" role="tab" type="button" id="tab-${v.id}" aria-controls="view-${v.id}"
-        aria-selected="${v.id === active}" data-tab="${v.id}">${esc(v.label)}${counts[v.id] != null ? `<span class="count">${counts[v.id]}</span>` : ''}</button>`).join('');
+    for (const b of tabEls) {
+      const on = b.dataset.tab === active;
+      b.setAttribute('aria-selected', String(on));
+      b.tabIndex = on ? 0 : -1;
+    }
+    const n = tabbar.querySelector('[data-count]');
+    if (n) {
+      n.textContent = fmtInt(pending);
+      tabbar.querySelector('[data-count-label]').textContent = `, ${fmtInt(pending)} pending${run?.totals ? ' in this sample' : ''}`;
+    }
     for (const v of VIEWS) {
       const el = document.getElementById(`view-${v.id}`);
       el.hidden = v.id !== active;
       el.setAttribute('aria-labelledby', `tab-${v.id}`);
+    }
+    if (active !== shownTab) {
+      shownTab = active;
+      const b = tabEls.find((t) => t.dataset.tab === active);
+      if (b) scrollTabIntoView(b);
+      // Motion only when a view appears, never on the re-renders that follow a decision. Deferred to a microtask:
+      // the view's own subscriber re-renders it on this same update, after this one, and before the next paint.
+      queueMicrotask(() => stagger(document.getElementById(`view-${active}`)?.children, { y: 6, each: 0.04, max: 6 }));
     }
   };
   tabbar.addEventListener('click', (e) => {
     const b = e.target.closest('[data-tab]');
     if (b) store.setUI({ tab: b.dataset.tab });
   });
+  tabbar.addEventListener('keydown', (e) => {
+    const i = tabEls.indexOf(e.target);
+    if (i < 0 || e.ctrlKey || e.metaKey || e.altKey) return;
+    const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabEls.length - 1 }[e.key];
+    if (to == null) return;
+    e.preventDefault();
+    const b = tabEls[(to + tabEls.length) % tabEls.length];
+    b.focus();
+    store.setUI({ tab: b.dataset.tab });
+  });
   store.subscribe(renderTabs);
   renderTabs();
 
-  document.getElementById('reset-demo').addEventListener('click', async () => {
+  // Location hash mirrors the tab and the selected entry (#queue/c_0007, #publish).
+  // A tab change adds a history entry, so Back moves between tabs; a new selection replaces the current one.
+  const tabIds = new Set(views.map((v) => v.id));
+  const parseHash = () => {
+    const [tab, id] = decodeURIComponent(location.hash.slice(1)).split('/');
+    return tabIds.has(tab) ? { tab, id: id || null } : null;
+  };
+  const wantHash = () => {
+    const { tab, selectedId } = store.ui();
+    const t = tabIds.has(tab) ? tab : 'queue';
+    return t === 'queue' && selectedId ? `#queue/${encodeURIComponent(selectedId)}` : `#${t}`;
+  };
+  const applyHash = () => {
+    const h = parseHash();
+    if (!h) return;
+    const ui = store.ui();
+    const patch = {};
+    if (h.tab !== ui.tab) patch.tab = h.tab;
+    if (h.tab === 'queue' && h.id && h.id !== ui.selectedId && store.concept(h.id)) patch.selectedId = h.id;
+    if (Object.keys(patch).length) store.setUI(patch);
+  };
+  const syncHash = () => {
+    const want = wantHash();
+    if (location.hash === want) return;
+    const cur = parseHash();
+    if (cur && cur.tab !== want.slice(1).split('/')[0]) { location.hash = want; return; }
+    try { history.replaceState(history.state, '', want); } catch { location.replace(want); }
+  };
+  applyHash();
+  store.subscribe(syncHash);
+  syncHash();
+  window.addEventListener('hashchange', applyHash);
+
+  // Reset is a two-step flow: the first click only asks. Live runs say plainly that the run itself goes.
+  const resetBtn = document.getElementById('reset-demo');
+  const confirmBox = document.getElementById('reset-confirm');
+  const confirmText = document.getElementById('reset-confirm-text');
+  const confirmYes = document.getElementById('reset-yes');
+  const confirmNo = document.getElementById('reset-cancel');
+  const syncResetLabel = () => { resetBtn.textContent = store.get()?.mode === 'live' ? 'Reset to sample run' : 'Reset demo'; };
+  store.subscribe(syncResetLabel);
+  syncResetLabel();
+  const closeConfirm = (focusBack = true) => {
+    confirmBox.hidden = true;
+    resetBtn.hidden = false;
+    if (focusBack) resetBtn.focus();
+  };
+  resetBtn.addEventListener('click', () => {
+    const run = store.get();
+    const decided = run ? run.concepts.filter((c) => c.status !== 'pending' || c.reopened).length : 0;
+    const lost = decided ? ` ${fmtInt(decided)} decision${decided === 1 ? '' : 's'} will be lost.` : '';
+    confirmText.textContent = run?.mode === 'live'
+      ? `Delete the live run on ${run.site?.name || run.site?.url || 'this site'} and load the sample?${lost}`
+      : `Reset everything?${lost}`;
+    confirmYes.textContent = run?.mode === 'live' ? 'Yes, delete the live run' : 'Yes, reset';
+    resetBtn.hidden = true;
+    confirmBox.hidden = false;
+    confirmNo.focus();
+  });
+  confirmNo.addEventListener('click', () => closeConfirm());
+  confirmBox.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeConfirm(); } });
+  confirmYes.addEventListener('click', async () => {
+    const wasLive = store.get()?.mode === 'live';
+    closeConfirm();
     store.reset();
     await loadDemo();
     store.setUI({ tab: live ? 'setup' : 'queue' });
-    toast('Demo reset');
+    toast(wasLive ? 'Live run deleted; the sample run is loaded' : 'Demo reset');
   });
 }
 

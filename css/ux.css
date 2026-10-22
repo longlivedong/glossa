@@ -1,0 +1,72 @@
+/* New UX elements from the audit fixes (docs/ux-audit.md). Uses the tokens in app.css. */
+
+/* F15: short tab labels at phone width. The full label stays in the accessible name. */
+@media (max-width: 480px) {
+  .tab[data-short] .tab-label {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+  }
+  .tab[data-short]::before { content: attr(data-short); content: attr(data-short) / ""; }
+}
+
+/* F11: queue rows carry the proposal and a compact confidence. */
+.q-row-end { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.q-row-conf { font-size: 12px; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.q-row-proposal {
+  display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text); font-size: 14px; line-height: 1.35;
+}
+.q-scope { margin-top: 2px; }
+
+/* F19: "Why this order?" popover: plain words first, formula second, a visible Close. */
+.q-why-pop p { margin: 0 0 8px; }
+.q-why-formula { color: var(--text-2); font-size: 12.5px; }
+.q-why-close { margin-top: 2px; }
+
+/* F16: one-line shortcut legend under the decision buttons. Hidden where there is no keyboard hover. */
+.card-legend { margin: 8px 0 0; font-size: 12px; color: var(--text-3); line-height: 1.4; }
+@media (hover: none) { .card-legend { display: none; } }
+/* Two-column widths: the legend sits beside the buttons, so the card still fits 1366x768. */
+@media (min-width: 820px) {
+  .card-act:has(> .card-legend) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+  .card-act > .card-legend { flex: 1 1 auto; margin: 0; text-align: right; }
+}
+
+/* F17: export note under the export buttons. (.t-zero tiles fall back to the neutral stripe.) */
+.p-actions-col { display: grid; gap: 4px; justify-items: end; }
+.p-export-note { margin: 0; }
+@media (max-width: 720px) { .p-actions-col { justify-items: start; } }
+
+/* F07: scope line on the Report. */
+.rp-scope { margin: 0; }
+
+/* F01: inline reset confirmation, kept apart from the repo link. */
+.reset-zone { display: inline-flex; align-items: center; margin-left: 16px; }
+.reset-confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.reset-confirm-text { color: var(--text); font-weight: 600; }
+.reset-yes { color: var(--critical); font-weight: 600; }
+.reset-cancel { color: var(--text-2); }
+
+/* F14: two stacked toasts at bottom centre would cover the decision buttons at 1280x800.
+   On two-column widths they sit bottom left, over the end of the list instead. */
+@media (min-width: 820px) {
+  #toast-root.toast-stack { left: 16px; transform: none; width: min(360px, 92vw); }
+}
+
+/* Stacked Publish rows on phones: show each cell's column name (set from the table head in publish.js). */
+@media (max-width: 520px) {
+  .pt td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 2px;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+}
+
+/* F06: inline text actions on phones get at least a 24px hit area without shifting the line. */
+@media (max-width: 480px) {
+  .linklike, #view-setup a { padding-block: 3px; }
+}

@@ -2,6 +2,7 @@
 import { LOCALE_LABEL } from '../schema.js';
 import { headerCounts, computeLine } from '../rules.js';
 import { fmtInt } from './dom.js';
+import { growBar } from '../motion.js';
 
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -42,7 +43,11 @@ export function mount(el, store, ctx) {
   const render = () => {
     const run = store.get();
     if (!run) { el.innerHTML = ''; built = false; return; }
-    if (!built) build();
+    if (!built) {
+      build();
+      // Grow the budget bar once, after this render has set the segment sizes.
+      queueMicrotask(() => { growBar(refs.segAuto); growBar(refs.segNeed, { delay: 0.08 }); });
+    }
     const h = headerCounts(run);
     const live = run.mode === 'live' || !run.totals;
     refs.site.textContent = run.site?.name || 'Your site';
@@ -68,9 +73,10 @@ export function mount(el, store, ctx) {
       const hours = run.budget.hours;
       if (document.activeElement !== refs.slider || Number(refs.slider.value) !== hours) refs.slider.value = String(hours);
       refs.hoursOut.textContent = `${hours} h = ${fmtInt(run.budget.capacity)} entries`;
+      refs.slider.setAttribute('aria-valuetext', `${hours} ${hours === 1 ? 'hour' : 'hours'}, ${fmtInt(run.budget.capacity)} entries`);
       const over = computeLine(run.concepts, { capacity: run.budget.capacity, seed: run.id }).overBudget;
       refs.warn.hidden = !(over > 0);
-      if (over > 0) refs.warn.textContent = `Critical and other must-review entries exceed the budget by ${fmtInt(over)}; they are still listed.`;
+      if (over > 0) refs.warn.textContent = `${fmtInt(over)} must-review ${over === 1 ? 'entry is' : 'entries are'} over this budget; they stay in the queue.`;
     }
   };
 
