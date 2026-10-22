@@ -1,7 +1,7 @@
 // Step 7: what publishes, what is held, and the two exports.
 import { publishedEntries } from '../rules.js';
 import { LOCALE_LABEL, STATUS_LABEL, REJECT_REASONS } from '../schema.js';
-import { esc, fmtInt, download, tierBadge, statusBadge } from './dom.js';
+import { esc, fmtInt, download, tierBadge, statusBadge, sampleScope } from './dom.js';
 
 const REJECT_LABEL = Object.fromEntries(REJECT_REASONS);
 
@@ -17,7 +17,8 @@ export function mount(el, store, ctx) {
     const n = (s) => run.concepts.filter((c) => c.status === s).length;
     return { accepted: n('accepted'), edited: n('edited'), rejected: n('rejected'), asked: n('asked_client'), escalated: n('escalated') };
   };
-  const open = { pending: true, client: true, held: true, published: true, rejected: false };
+  // What ships leads; the pending list repeats the queue, so it starts collapsed with its count in the summary.
+  const open = { published: true, client: true, held: true, pending: false, rejected: false };
 
   const MAX_ROWS = 50;
   const modeChip = (mode, flagged) => `<span class="mode-chip mode-${esc(mode)}">${mode === 'hard' ? 'Hard' : 'Guidance'}</span>${flagged ? ' <span class="flag-chip">flagged</span>' : ''}`;
@@ -52,39 +53,49 @@ export function mount(el, store, ctx) {
     const hard = pub.published.filter((p) => p.mode === 'hard').length;
     const soft = pub.published.length - hard;
     const decided = run.concepts.filter((c) => c.status !== 'pending').length;
-    const tile = (n, label, cls) => `<div class="p-tile panel ${cls}"><span class="p-n">${fmtInt(n)}</span><span class="p-l">${esc(label)}</span></div>`;
+    const tile = (n, label, cls) => `<div class="p-tile panel ${n > 0 ? cls : 't-zero'}"><span class="p-n">${fmtInt(n)}</span><span class="p-l">${esc(label)}</span></div>`;
+    const scope = sampleScope(run);
+    const nPending = pub.pendingForLead.length;
     el.innerHTML = `
       <div class="p-wrap stack-lg">
         <div class="view-head">
           <div>
             <h2 class="view-title">Publish</h2>
             <p class="muted"><strong>${fmtInt(pub.published.length)}</strong> entries publish: ${fmtInt(hard)} hard, ${fmtInt(soft)} guidance</p>
-            ${run.totals ? `<p class="subtle">Counts cover the ${fmtInt(run.concepts.length)}-entry sample in this demo.</p>` : ''}
+            ${scope ? `<p class="subtle">${esc(scope)}. Every count on this tab covers the sample.</p>` : ''}
           </div>
-          <div class="row p-actions">
-            <button type="button" class="btn btn-primary" data-export="json">Export glossary (JSON)</button>
-            <button type="button" class="btn" data-export="csv">Export CSV</button>
+          <div class="p-actions-col">
+            <div class="row p-actions">
+              <button type="button" class="btn btn-primary" data-export="json">Export glossary (JSON)</button>
+              <button type="button" class="btn" data-export="csv">Export CSV</button>
+            </div>
+            ${nPending ? `<p class="subtle p-export-note">${fmtInt(nPending)} still pending won't be published.</p>` : ''}
           </div>
         </div>
         <div class="p-tiles">
-          ${tile(decided, 'Decided', 't-ok')}${tile(pub.pendingForLead.length, 'Still pending for the lead', 't-pending')}${tile(k.asked, 'Awaiting client', 't-warn')}
+          ${tile(decided, 'Decided', 't-ok')}${tile(k.asked, 'Awaiting client', 't-warn')}
         </div>
-        ${group('pending', 'Still pending: will not publish silently; listed for the lead', 'These sit above the line and have no decision yet.',
-          pub.pendingForLead, ['Term', 'Drafter rendering', 'Tier', 'Mode'],
-          (c) => `<tr>${term(c)}<td class="pt-tgt">${esc(c.proposal.text)}</td><td>${tierBadge(c.tier)}</td><td>${modeChip(c.enforcement)}</td></tr>`, 'is-pending')}
-        ${group('client', 'Awaiting client: ships as guidance, flagged, until the client replies', 'The question is on file with each entry.',
-          pub.awaitingClient, ['Term', 'Rendering', 'Question to the client', 'Tier'],
-          (c) => `<tr>${term(c)}<td class="pt-tgt">${esc(c.proposal.text)}</td><td class="pt-note">${esc(c.decision?.question || '')}</td><td>${tierBadge(c.tier)}</td></tr>`, 'is-warn')}
-        ${group('held', 'Escalated: held for the locale lead', STATUS_LABEL.escalated + '.',
-          pub.held, ['Term', 'Drafter', 'Linguist', 'Tier'],
-          (c) => `<tr>${term(c)}<td class="pt-tgt">${esc(c.decision?.previousText || c.proposal.text)}</td><td class="pt-tgt">${esc(c.decision?.newText || '—')}</td><td>${tierBadge(c.tier)}</td></tr>`, 'is-bad')}
         ${group('published', 'Publishing', 'What ships, with the enforcement mode the translation step will apply.',
           pub.published, ['Term', 'Rendering', 'Tier', 'Mode', 'Status'],
           ({ concept: c, mode, flagged }) => `<tr>${term(c)}<td class="pt-tgt">${esc(c.proposal.text)}</td><td>${tierBadge(c.tier)}</td><td>${modeChip(mode, flagged)}</td><td>${statusText(c)}</td></tr>`)}
-        ${group('rejected', 'Rejected: will not publish', 'The linguist rejected the drafter\'s rendering; the reason stays on file.',
+        ${group('client', 'Awaiting client', 'Ships as guidance, flagged, until the client replies. The question is on file with each entry.',
+          pub.awaitingClient, ['Term', 'Rendering', 'Question to the client', 'Tier'],
+          (c) => `<tr>${term(c)}<td class="pt-tgt">${esc(c.proposal.text)}</td><td class="pt-note">${esc(c.decision?.question || '')}</td><td>${tierBadge(c.tier)}</td></tr>`, 'is-warn')}
+        ${group('held', 'Held for the locale lead', STATUS_LABEL.escalated + '.',
+          pub.held, ['Term', 'Drafter', 'Linguist', 'Tier'],
+          (c) => `<tr>${term(c)}<td class="pt-tgt">${esc(c.decision?.previousText || c.proposal.text)}</td><td class="pt-tgt">${esc(c.decision?.newText || '—')}</td><td>${tierBadge(c.tier)}</td></tr>`, 'is-bad')}
+        ${group('pending', 'Still pending', 'No decision yet. These won\'t publish silently; they are listed for the lead.',
+          pub.pendingForLead, ['Term', 'Drafter rendering', 'Tier', 'Mode'],
+          (c) => `<tr>${term(c)}<td class="pt-tgt">${esc(c.proposal.text)}</td><td>${tierBadge(c.tier)}</td><td>${modeChip(c.enforcement)}</td></tr>`, 'is-pending')}
+        ${group('rejected', 'Rejected', 'Won\'t publish. The linguist rejected the drafter\'s rendering; the reason stays on file.',
           pub.rejected, ['Term', 'Drafter rendering', 'Reason', 'Tier'],
           (c) => `<tr>${term(c)}<td class="pt-tgt">${esc(c.proposal.text)}</td><td class="pt-note">${esc((REJECT_LABEL[c.decision?.reason] || '') + (c.decision?.note ? `: ${c.decision.note}` : ''))}</td><td>${tierBadge(c.tier)}</td></tr>`)}
       </div>`;
+    // Column names on every cell, so the stacked phone layout (review.css) can show them as labels.
+    for (const t of el.querySelectorAll('table.pt')) {
+      const head = [...t.querySelectorAll('thead th')].map((th) => th.textContent);
+      for (const tr of t.querySelectorAll('tbody tr')) [...tr.children].forEach((cell, i) => { if (head[i]) cell.dataset.label = head[i]; });
+    }
   }
 
   el.addEventListener('toggle', (e) => {

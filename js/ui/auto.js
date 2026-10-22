@@ -24,7 +24,8 @@ export function mount(el, store, ctx) {
     const low = items.filter((c) => c.tier === 'low');
     const main = items.filter((c) => c.tier !== 'low');
     const h = headerCounts(run);
-    const note = run.totals ? `Showing ${fmtInt(items.length)} of ${fmtInt(h.auto)} auto-approved` : `${fmtInt(items.length)} auto-approved`;
+    // Demo: a sample of the site's auto-approved entries (the hero's figure is whole-site). Live: the run's own count.
+    const note = run.totals ? `Showing ${fmtInt(items.length)} of ${fmtInt(h.auto)} (sample)` : `${fmtInt(items.length)} auto-approved`;
     const shown = main.slice(0, CAP);
     el.innerHTML = `
       <div class="a-wrap stack">
@@ -52,6 +53,7 @@ export function mount(el, store, ctx) {
     store.reopen(id);
     ctx.toast(`Reopened “${c.source}”: now in your queue`, {
       actionLabel: 'Undo',
+      actionAria: `Undo reopen of “${c.source}”`,
       onAction: () => store.undo(id),
     });
   });

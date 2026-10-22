@@ -5,10 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Glossa · Human-in-the-loop glossary review</title>
   <meta name="description" content="A working prototype: an LLM drafts a website's glossary, a second LLM judges it, code decides which entries a linguist sees, and everything else stays visible and reversible.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect width='28' height='28' rx='8' fill='%234338ca'/%3E%3Cpath d='M8.5 7.5h11a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-5.2L10 22.6v-3.1H8.5a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3z' fill='white'/%3E%3Cpath d='M10.4 13.6l2.5 2.5 4.8-5' stroke='%234338ca' stroke-width='2.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect width='28' height='28' rx='8' fill='%23047857'/%3E%3Cpath d='M8.5 7.5h11a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-5.2L10 22.6v-3.1H8.5a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3z' fill='white'/%3E%3Cpath d='M10.4 13.6l2.5 2.5 4.8-5' stroke='%23047857' stroke-width='2.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="preload" href="css/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="css/app.css">
   <link rel="stylesheet" href="css/review.css">
   <link rel="stylesheet" href="css/live.css">
+  <link rel="stylesheet" href="css/ux.css">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -28,6 +30,7 @@
   </div>
   <div id="banner"></div>
   <div class="hero-band">
+    <h1 class="visually-hidden">Glossa glossary review</h1>
     <header id="app-header"></header>
   </div>
   <nav id="tabs" aria-label="Views"><div class="wrap tabbar" role="tablist"></div></nav>
@@ -43,11 +46,20 @@
       <span id="footer-note">All names and data in the sample run are fictional.</span>
       <span class="row">
         <a id="repo-link" href="#" target="_blank" rel="noopener">Source on GitHub</a>
-        <button class="linklike" id="reset-demo" type="button">Reset demo</button>
+        <span class="reset-zone">
+          <button class="linklike" id="reset-demo" type="button">Reset demo</button>
+          <span class="reset-confirm" id="reset-confirm" role="group" aria-labelledby="reset-confirm-text" hidden>
+            <span class="reset-confirm-text" id="reset-confirm-text">Reset everything?</span>
+            <button class="linklike reset-yes" id="reset-yes" type="button">Yes, reset</button>
+            <button class="linklike reset-cancel" id="reset-cancel" type="button">Cancel</button>
+          </span>
+        </span>
       </span>
     </div>
   </footer>
-  <div id="toast-root" aria-live="polite"></div>
+  <div id="toast-root" class="toast-stack" aria-live="polite"></div>
+  <!-- GSAP core, vendored (no CDN). Optional: js/motion.js does nothing if it fails to load. -->
+  <script src="js/vendor/gsap.min.js" defer></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

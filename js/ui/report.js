@@ -1,7 +1,7 @@
 // Report: what this run did, the enforcement preview, and what the reviews taught it.
 import { headerCounts, importDisagrees } from '../rules.js';
 import { LOCALE_LABEL } from '../schema.js';
-import { esc, fmtInt } from './dom.js';
+import { esc, fmtInt, sampleScope } from './dom.js';
 
 const fmtMs = (ms) => {
   const s = ms / 1000;
@@ -106,6 +106,7 @@ export function mount(el, store, ctx) {
           </div>
           <span class="run-tag ${demo ? 'is-sample' : 'is-live'}">${demo ? 'Sample run · fictional data' : 'Live run'}</span>
         </div>
+        ${run.totals ? `<p class="subtle rp-scope">Whole-site figures, as in the header. The Queue, Auto-approved and Publish tabs work on a ${esc(sampleScope(run).replace(/^Sample/, 'sample'))}.</p>` : ''}
         ${summary(run)}
         <div class="panel rp-panel">${whereWent(run)}</div>
         <div class="panel rp-panel">${imported(run)}</div>

@@ -8,11 +8,30 @@ export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ESC[ch]);
 export const pct = (x) => `${Math.round(x * 100)}%`;
 export const fmtInt = (n) => Number(n).toLocaleString('en-US');
 
-/** Tier badge with its reason available on hover, tap and keyboard focus (title + aria). */
-export function tierBadge(tier, reason = '') {
+/**
+ * Tier badge. With `tipId` (the card) the badge is focusable and described by the custom tooltip of that id, so the
+ * reason shows on hover and on keyboard focus with no native title. Without it (lists) the badge is not a Tab stop;
+ * a reason, if given, is only a hover hint.
+ */
+export function tierBadge(tier, reason = '', tipId = '') {
   const label = TIER_LABEL[tier] ?? tier;
-  const tip = reason ? ` title="${esc(reason)}" aria-label="${esc(`${label} tier: ${reason}`)}" tabindex="0"` : '';
+  const tip = reason && tipId ? ` tabindex="0" aria-describedby="${esc(tipId)}"` : reason ? ` title="${esc(reason)}"` : '';
   return `<span class="tier-badge tier-${esc(tier)}"${tip}>${esc(label)}</span>`;
+}
+
+/**
+ * Scope sentence for the demo, whose views hold a 40-entry sample of a 3,000-entry site (the hero speaks for the
+ * whole site). Returns '' for live runs: every number there comes from the run itself.
+ * kind: 'queue' | 'all'
+ */
+export function sampleScope(run, kind = 'all') {
+  if (!run?.totals) return '';
+  const reopened = run.concepts.filter((c) => c.reopened).length;
+  if (kind === 'queue') {
+    const n = run.concepts.filter((c) => c.bucket === 'queue').length;
+    return `Sample of ${fmtInt(n)} from the ${fmtInt(run.totals.queue + reopened)} that need you`;
+  }
+  return `Sample of ${fmtInt(run.concepts.length)} from the site's ${fmtInt(run.totals.concepts)} entries`;
 }
 
 export function confBar(confidence) {
@@ -42,7 +61,7 @@ export function frag(html) {
   return t.content;
 }
 
-/** Trigger a file download from a string (works from file:// and static hosting). */
+/** Trigger a file download from a string (works on any static host). */
 export function download(filename, text, type = 'application/json') {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const a = Object.assign(document.createElement('a'), { href: url, download: filename });

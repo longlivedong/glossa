@@ -21,7 +21,7 @@ node server.mjs           # open http://localhost:8787
 2. Or click **Try an example**. It fills in one of the two ready-made tests in [samples/TEST-KIT.md](samples/TEST-KIT.md): a public health site and a sandbox bookshop.
 3. Review the queue, then see the **Report** tab for what the run found.
 
-Without a key, the app opens on a fictional sample run so you can still try the review flow. `LLM_PROVIDER=mock node server.mjs` runs the live flow with canned model answers.
+Without a key, the app opens on a fictional sample run so you can still try the review flow. `LLM_PROVIDER=mock node server.mjs` runs the live flow with canned model answers. The sample run alone works from any static server (`node server.mjs` or `python3 -m http.server`).
 
 ### Keys and free tiers
 
@@ -123,8 +123,9 @@ The repo also deploys to Vercel as static files plus three functions (`api/healt
 ## Project structure
 
 ```
-index.html            page shell; no build step, no dependencies, no CDN
-css/                  app.css (tokens, shared), review.css (header, queue, card), live.css (setup, report)
+index.html            page shell; no build step, no npm dependencies, no CDN
+css/                  app.css (tokens, shared), review.css (header, queue, card), live.css (setup, report), ux.css (accessibility fixes)
+                      Plus Jakarta Sans (SIL OFL, css/fonts) and GSAP core (js/vendor, used by js/motion.js) are bundled locally: no CDN, no build step
 js/rules.js           tiers, priority, floors, the line, calibration, publish rules (pure functions)
 js/pipeline.js        the fixed pipeline: crawl, extract, cluster, draft ×3, sibling, judge, line; enforcement preview
 js/prompts.js         one prompt per model task
