@@ -23,6 +23,7 @@ export function mount(el, store, ctx) {
           <span><strong class="hero-key" data-r="need"></strong> need you.</span>
           <span data-r="hours"></span>
         </p>
+        <p class="hero-short" aria-hidden="true"><strong class="hero-key" data-r="needShort"></strong> need you<span data-r="hoursShort"></span></p>
         <div class="bb" role="img" data-r="bar">
           <span class="bb-seg bb-auto" data-r="segAuto"></span>
           <span class="bb-seg bb-need" data-r="segNeed"><span class="bb-done" data-r="segDone"></span></span>
@@ -57,6 +58,9 @@ export function mount(el, store, ctx) {
     refs.total.textContent = fmtInt(h.total);
     refs.need.textContent = fmtInt(h.needYou);
     refs.hours.textContent = h.hours > 0 ? `${cap(h.hoursLabel)} at your pace.` : 'Nothing left above the line.';
+    // Phones: one line; the full sentence above stays for screen readers (and is what desktop shows).
+    refs.needShort.textContent = fmtInt(h.needYou);
+    refs.hoursShort.textContent = h.hours > 0 ? ` · ${h.hoursLabel.replace(/ hours?$/, ' h')}` : '';
 
     // Slim bar: auto-approved vs needs you; the reviewed part of "needs you" fills in.
     const queueAll = h.needYou + h.reviewed;

@@ -1,4 +1,5 @@
 // The review queue: filterable list on the left, the review card on the right.
+// Phones show the list, or one card in its place with a slim back / position / previous-next bar (ctx.isDetail).
 import { TIERS, TIER_LABEL, sortQueue, hint, headerCounts } from '../rules.js';
 import { esc, tierBadge, statusBadge, fmtInt, pct, sampleScope } from './dom.js';
 import { createCard } from './card.js';
@@ -11,13 +12,29 @@ export function mount(el, store, ctx) {
     <h2 class="visually-hidden">Review queue</h2>
     <div class="q-layout">
       <div class="q-list-col"><div class="q-list-inner" data-r="list"></div></div>
-      <div class="q-card-col" data-r="card"></div>
+      <div class="q-card-col">
+        <div class="q-dbar" data-r="dbar">
+          <button type="button" class="q-back" data-back aria-label="Back to the queue"><span aria-hidden="true">←</span> Queue</button>
+          <span class="q-pos" data-r="pos"></span>
+          <span class="q-steps">
+            <button type="button" class="q-step" data-step="-1" aria-label="Previous entry"><svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" focusable="false"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button type="button" class="q-step" data-step="1" aria-label="Next entry"><svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" focusable="false"><path d="M7.5 4.5 13 10l-5.5 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          </span>
+        </div>
+        <div data-r="card"></div>
+      </div>
     </div>`;
+  const layoutEl = el.querySelector('.q-layout');
   const listEl = el.querySelector('[data-r="list"]');
   const cardEl = el.querySelector('[data-r="card"]');
+  const dbarEl = el.querySelector('[data-r="dbar"]');
+  const posEl = el.querySelector('[data-r="pos"]');
   let whyOpen = false;
   let lastSelected = null;
   let order = [];
+  let listScroll = 0;
+  let detailSel = null;
+  const isDetail = () => !!ctx.isDetail?.() && store.ui().tab === 'queue';
 
   const nav = {
     next(id) {
@@ -63,6 +80,7 @@ export function mount(el, store, ctx) {
 
     const act = document.activeElement;
     const fk = act && listEl.contains(act) ? act.dataset.fk : null;
+    const chipsScroll = listEl.querySelector('.q-chips')?.scrollLeft || 0;
     const onRow = !!fk && act.classList.contains('q-row');
     const pending = main.filter((c) => c.status === 'pending').length;
     const scope = sampleScope(run, 'queue');
@@ -88,15 +106,60 @@ export function mount(el, store, ctx) {
       ${ui.showRandom ? `<h3 class="q-section">Random check · sampled from auto-approved</h3>
         ${rc.length ? `<ul class="q-rows q-rows-rc">${rc.map((c) => row(c, sel, lang)).join('')}</ul>` : '<p class="subtle q-empty-rc">No random-check items for this filter.</p>'}` : ''}`;
     // Focus follows the selection when it was on a row, so the two never drift apart (A, ↑/↓, click).
+    const chips = listEl.querySelector('.q-chips');
+    chips.scrollLeft = chipsScroll;
+    fadeChips(chips);
+
+    const detail = isDetail() && !!sel;
+    const wasDetail = layoutEl.classList.contains('is-detail');
+    layoutEl.classList.toggle('is-detail', detail);
+    document.body.classList.toggle('q-detail-on', detail);
     const selRow = listEl.querySelector('.q-row[aria-current="true"]');
-    if (onRow && selRow) selRow.focus({ preventScroll: true });
-    else if (fk) listEl.querySelector(`[data-fk="${fk}"]`)?.focus({ preventScroll: true });
+    if (onRow && selRow && !detail) selRow.focus({ preventScroll: true });
+    else if (fk && !detail) listEl.querySelector(`[data-fk="${fk}"]`)?.focus({ preventScroll: true });
     if (sel !== lastSelected) {
-      listEl.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'nearest' });
+      // Phones scroll the page, not the list: don't jump down to a stored selection on first load.
+      if (!detail && !(ctx.narrow?.matches && lastSelected === null)) selRow?.scrollIntoView({ block: 'nearest' });
       lastSelected = sel;
     }
     card.render(sel);
+
+    if (detail) {
+      const i = order.findIndex((c) => c.id === sel);
+      posEl.textContent = `${fmtInt(i + 1)} of ${fmtInt(order.length)}`;
+      dbarEl.querySelector('[data-step="-1"]').setAttribute('aria-disabled', String(i <= 0));
+      dbarEl.querySelector('[data-step="1"]').setAttribute('aria-disabled', String(i >= order.length - 1));
+      // The bar is sticky, so scroll its column (the card's top) to the top of the screen.
+      if (!wasDetail || sel !== detailSel) window.scrollTo(0, Math.max(0, dbarEl.parentElement.getBoundingClientRect().top + window.scrollY - 10));
+      if (!wasDetail && (onRow || !el.contains(document.activeElement))) dbarEl.querySelector('[data-back]').focus({ preventScroll: true });
+      detailSel = sel;
+    } else if (wasDetail && store.ui().tab === 'queue') {
+      // Back to the list where it was, with focus on the entry just reviewed.
+      window.scrollTo(0, listScroll);
+      if (selRow) {
+        selRow.focus({ preventScroll: true });
+        const r = selRow.getBoundingClientRect();
+        if (r.top < 56 || r.bottom > window.innerHeight) selRow.scrollIntoView({ block: 'center' });
+      }
+      detailSel = null;
+    } else detailSel = null;
   }
+
+  // Phone filter chips scroll sideways; fade the right edge only while more chips are off-screen.
+  const fadeChips = (chips) => {
+    if (!chips) return;
+    chips.classList.toggle('is-clipped', chips.scrollWidth - chips.clientWidth - chips.scrollLeft > 2);
+  };
+  listEl.addEventListener('scroll', (e) => { if (e.target.matches?.('.q-chips')) fadeChips(e.target); }, true);
+  window.addEventListener('resize', () => fadeChips(listEl.querySelector('.q-chips')));
+
+  dbarEl.addEventListener('click', (e) => {
+    if (e.target.closest('[data-back]')) { ctx.closeDetail?.(); return; }
+    const b = e.target.closest('[data-step]');
+    if (!b || b.getAttribute('aria-disabled') === 'true') return;
+    const to = nav.step(store.ui().selectedId, Number(b.dataset.step));
+    if (to) store.setUI({ selectedId: to });
+  });
 
   listEl.addEventListener('click', (e) => {
     const t = e.target.closest('[data-tier]');
@@ -105,11 +168,8 @@ export function mount(el, store, ctx) {
     if (e.target.closest('[data-why]')) { if (whyOpen) closeWhy(true); else openWhy(); return; }
     const r = e.target.closest('[data-id]');
     if (r) {
-      store.setUI({ selectedId: r.dataset.id });
-      if (window.matchMedia('(max-width: 819px)').matches) {
-        const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        cardEl.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
-      }
+      if (ctx.narrow?.matches && ctx.openDetail) { listScroll = window.scrollY; ctx.openDetail(r.dataset.id); }
+      else store.setUI({ selectedId: r.dataset.id });
     }
   });
   listEl.addEventListener('change', (e) => {
@@ -143,6 +203,9 @@ export function mount(el, store, ctx) {
     const tag = e.target?.tagName;
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || e.target?.isContentEditable) return;
     if (e.target.closest?.('[role="tablist"], .popover, footer')) return;
+    if (e.key === 'Escape' && isDetail()) { e.preventDefault(); ctx.closeDetail(); return; }
+    // Phone list: the card is out of sight, so only moving and undo work; Enter on a row opens it.
+    if (ctx.narrow?.matches && !isDetail() && /^[aerc]$/i.test(e.key)) return;
     if (card.handleKey(e)) e.preventDefault();
   });
 

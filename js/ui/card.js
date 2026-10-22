@@ -14,7 +14,6 @@ function check(label, v) {
 }
 
 const UNDO_VERB = { accept: 'accept', edit: 'edit', reject: 'reject', ask_client: 'question to the client' };
-const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /**
  * @param {HTMLElement} el
@@ -60,11 +59,8 @@ export function createCard(el, store, ctx, nav) {
     if (upcoming) {
       store.setUI({ selectedId: upcoming });
       // A form (Save, Send, Confirm) was focused and is gone now: land on the next card's Accept, not on <body>.
+      // (On phones the queue view brings the next card's top into view.)
       if (inCard && !el.contains(document.activeElement)) el.querySelector('[data-act="accept"]')?.focus();
-      // Narrow screens stack the list above the card: bring the next card into view.
-      if (window.matchMedia('(max-width: 819px)').matches) {
-        el.querySelector('.card')?.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
-      }
     }
   };
 
@@ -254,7 +250,7 @@ export function createCard(el, store, ctx, nav) {
   });
 
   el.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && st.mode) { const c = store.concept(st.id); st.mode = null; lastSig = ''; if (c) render(c.id, true); }
+    if (e.key === 'Escape' && st.mode) { e.preventDefault(); const c = store.concept(st.id); st.mode = null; lastSig = ''; if (c) render(c.id, true); }
   });
 
   /** Shortcut handler, called by the queue view. Returns true when the key was used. */

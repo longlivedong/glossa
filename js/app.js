@@ -30,6 +30,12 @@ async function detectHealth() {
   }
 }
 
+// Phones show the queue as a list, or one card in its place (detail). Detail lives in the URL hash, never in storage.
+const narrow = window.matchMedia('(max-width: 819px)');
+const qmode = { detail: false };
+const NOTICE_KEY = 'glossa:notice-dismissed';
+const noticeDismissed = () => { try { return sessionStorage.getItem(NOTICE_KEY) === '1'; } catch { return false; } };
+
 const TOAST_MS = 8000;
 const TOAST_MAX = 2; // keep the previous toast too, so its Undo isn't lost to the next decision
 
@@ -75,13 +81,15 @@ const shortDate = (iso) => {
 
 function renderBanner(health, run) {
   const el = document.getElementById('banner');
-  const note = (icon, html) => `<div class="notice" role="note"><div class="wrap notice-in"><span class="notice-icon" aria-hidden="true">${icon}</span><span>${html}</span></div></div>`;
+  // Phones show the short line (aria-hidden) and keep the long one for screen readers; the × hides it for the session.
+  const note = (icon, long, short, tail = '') => `<div class="notice" role="note"><div class="wrap notice-in"><span class="notice-icon" aria-hidden="true">${icon}</span><span class="notice-text"><span class="notice-long">${long}</span><span class="notice-short" aria-hidden="true">${short}</span>${tail}</span><button type="button" class="notice-x" data-dismiss-notice aria-label="Dismiss this notice">×</button></div></div>`;
+  el.classList.toggle('is-dismissed', noticeDismissed());
   if (!health && run?.mode !== 'live') {
-    setHtml(el, note('i', `You're viewing a sample run on a fictional site.<span class="notice-more"> To run it on your own: clone the repo, copy <code>.env.example</code> to <code>.env</code>, add a free API key, run <code>node server.mjs</code>.</span> <a href="${REPO_URL}" target="_blank" rel="noopener">How it works</a>`));
+    setHtml(el, note('i', `You're viewing a sample run on a fictional site.<span class="notice-more"> To run it on your own: clone the repo, copy <code>.env.example</code> to <code>.env</code>, add a free API key, run <code>node server.mjs</code>.</span>`, 'Sample run on a fictional site.', ` <a href="${REPO_URL}" target="_blank" rel="noopener">How it works</a>`));
   } else if (health && !health.live) {
-    setHtml(el, note('!', `The local server is running but no API key is configured, so you're seeing the sample run. Add <code>LLM_API_KEY</code> to <code>.env</code> and restart <code>node server.mjs</code>.`));
+    setHtml(el, note('!', `The local server is running but no API key is configured, so you're seeing the sample run. Add <code>LLM_API_KEY</code> to <code>.env</code> and restart <code>node server.mjs</code>.`, 'No API key set: showing the sample.'));
   } else if (health && run?.mode === 'demo') {
-    setHtml(el, note('i', `You're viewing the fictional sample. <button type="button" class="linklike notice-cta" data-new-run>Run Glossa on a website →</button>`));
+    setHtml(el, note('i', `You're viewing the fictional sample.`, 'Fictional sample.', ` <button type="button" class="linklike notice-cta" data-new-run>Run Glossa on a website →</button>`));
   } else {
     setHtml(el, '');
   }
@@ -91,24 +99,30 @@ function renderBrand(run, live) {
   const el = document.getElementById('brand-right');
   let pill = '';
   if (run?.mode === 'demo') {
-    pill = `<span class="run-pill is-sample"><span class="run-dot" aria-hidden="true"></span>Sample run · fictional data</span>`;
+    pill = `<span class="run-pill is-sample"><span class="run-dot" aria-hidden="true"></span><span class="pill-long">Sample run · fictional data</span><span class="pill-short" aria-hidden="true">Sample</span></span>`;
   } else if (run) {
     const when = shortDate(run.createdAt);
-    pill = `<span class="run-pill is-live" title="${esc(run.site?.url || '')}"><span class="run-dot" aria-hidden="true"></span>Live run${when ? ` · ${esc(when)}` : ''}</span>`;
+    pill = `<span class="run-pill is-live" title="${esc(run.site?.url || '')}"><span class="run-dot" aria-hidden="true"></span><span class="pill-long">Live run${when ? ` · ${esc(when)}` : ''}</span><span class="pill-short" aria-hidden="true">Live</span></span>`;
   }
-  setHtml(el, `${pill}${live ? '<button type="button" class="btn btn-primary btn-sm" data-new-run>New run</button>' : ''}`);
+  setHtml(el, `${pill}${live ? '<button type="button" class="btn btn-primary btn-sm brand-new" data-new-run>New run</button>' : ''}`);
 }
 
 async function main() {
   const health = await detectHealth();
   const live = !!health?.live;
-  const ctx = { mode: live ? 'live' : 'demo', health, toast };
+  const ctx = { mode: live ? 'live' : 'demo', health, toast, narrow, isDetail: () => narrow.matches && qmode.detail };
   const store = createStore();
 
   document.getElementById('repo-link').href = REPO_URL;
   const renderChrome = () => { renderBanner(health, store.get()); renderBrand(store.get(), live); };
   store.subscribe(renderChrome);
   document.addEventListener('click', (e) => {
+    if (e.target.closest('[data-dismiss-notice]')) {
+      try { sessionStorage.setItem(NOTICE_KEY, '1'); } catch { /* storage blocked: hide it for this page only */ }
+      document.getElementById('banner').classList.add('is-dismissed');
+      document.querySelector('#tabs [aria-selected="true"]')?.focus();
+      return;
+    }
     if (!e.target.closest('[data-new-run]')) return;
     store.setUI({ tab: 'setup' });
     window.dispatchEvent(new CustomEvent('glossa:new-run'));
@@ -189,7 +203,10 @@ async function main() {
   };
   tabbar.addEventListener('click', (e) => {
     const b = e.target.closest('[data-tab]');
-    if (b) store.setUI({ tab: b.dataset.tab });
+    if (!b) return;
+    // On a phone, the Queue tab inside a card goes back to the list.
+    if (b.dataset.tab === 'queue' && store.ui().tab === 'queue' && ctx.isDetail()) ctx.closeDetail();
+    else store.setUI({ tab: b.dataset.tab });
   });
   tabbar.addEventListener('keydown', (e) => {
     const i = tabEls.indexOf(e.target);
@@ -211,10 +228,11 @@ async function main() {
     const [tab, id] = decodeURIComponent(location.hash.slice(1)).split('/');
     return tabIds.has(tab) ? { tab, id: id || null } : null;
   };
+  // Phones: the list is #queue and a card is #queue/c_0007, so browser Back from a card returns to the list.
   const wantHash = () => {
     const { tab, selectedId } = store.ui();
     const t = tabIds.has(tab) ? tab : 'queue';
-    return t === 'queue' && selectedId ? `#queue/${encodeURIComponent(selectedId)}` : `#${t}`;
+    return t === 'queue' && selectedId && (!narrow.matches || qmode.detail) ? `#queue/${encodeURIComponent(selectedId)}` : `#${t}`;
   };
   const applyHash = () => {
     const h = parseHash();
@@ -223,9 +241,25 @@ async function main() {
     const patch = {};
     if (h.tab !== ui.tab) patch.tab = h.tab;
     if (h.tab === 'queue' && h.id && h.id !== ui.selectedId && store.concept(h.id)) patch.selectedId = h.id;
-    if (Object.keys(patch).length) store.setUI(patch);
+    const detail = h.tab === 'queue' && !!h.id && !!store.concept(h.id);
+    const flip = detail !== qmode.detail;
+    qmode.detail = detail;
+    if (Object.keys(patch).length || flip) store.setUI(patch);
+  };
+  ctx.openDetail = (id) => {
+    if (!qmode.detail) {
+      qmode.detail = true;
+      try { history.pushState({ glossaDetail: true }, '', `#queue/${encodeURIComponent(id)}`); } catch { /* syncHash replaces it */ }
+    }
+    store.setUI({ selectedId: id });
+  };
+  ctx.closeDetail = () => {
+    if (history.state?.glossaDetail) { history.back(); return; } // hashchange closes it
+    qmode.detail = false;
+    store.setUI({});
   };
   const syncHash = () => {
+    if (store.ui().tab !== 'queue') qmode.detail = false;
     const want = wantHash();
     if (location.hash === want) return;
     const cur = parseHash();
@@ -233,9 +267,18 @@ async function main() {
     try { history.replaceState(history.state, '', want); } catch { location.replace(want); }
   };
   applyHash();
+  // A deep link straight to a card on a phone gets a list entry underneath it, so Back still lands on the list.
+  if (ctx.isDetail() && !history.state?.glossaDetail) {
+    try {
+      const at = location.hash;
+      history.replaceState(null, '', '#queue');
+      history.pushState({ glossaDetail: true }, '', at);
+    } catch { /* keep the single entry */ }
+  }
   store.subscribe(syncHash);
   syncHash();
   window.addEventListener('hashchange', applyHash);
+  narrow.addEventListener('change', () => store.setUI({}));
 
   // Reset is a two-step flow: the first click only asks. Live runs say plainly that the run itself goes.
   const resetBtn = document.getElementById('reset-demo');
